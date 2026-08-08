@@ -1,0 +1,27 @@
+[tool.poetry]
+package-mode = false
+
+[project]
+name = "ondine-backend"
+version = "0.1.0"
+description = "API FastAPI : mesures qualite eau par commune/EPCI/departement/region"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi (>=0.115)",
+    "uvicorn[standard] (>=0.32)",
+    "sqlalchemy (>=2.0)",
+    "psycopg[binary] (>=3.2)",
+    "alembic (>=1.14)",
+    "pydantic-settings (>=2.6)",
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3"
+ruff = ">=0.7"
+
+[tool.ruff]
+line-length = 100
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"

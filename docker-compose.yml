@@ -1,4 +1,35 @@
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ondine
+      POSTGRES_PASSWORD: ondine
+      POSTGRES_DB: ondine
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ondine"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://ondine:ondine@db:5432/ondine
+    ports:
+      # Exposed on the host so `npm run dev` (Vite's own server, outside docker) can
+      # reach it directly, mirroring what Caddy proxies to in the full compose stack.
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   caddy:
     build:
       context: ./frontend
@@ -6,6 +37,8 @@ services:
       - "8080:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - backend
     restart: unless-stopped
 
   # Pipeline : pas un service permanent, lancer a la demande, ex:
@@ -16,3 +49,6 @@ services:
     volumes:
       - ./pipeline:/app
     profiles: ["tools"]
+
+volumes:
+  db-data:

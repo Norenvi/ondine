@@ -6,6 +6,13 @@
 	@geo path *.geojson *.mbtiles *.pbf
 	header @geo Cache-Control "public, max-age=3600"
 
-	file_server
-	try_files {path} /index.html
+	# API FastAPI : meme origine cote navigateur, pas de souci CORS
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		file_server
+		try_files {path} /index.html
+	}
 }

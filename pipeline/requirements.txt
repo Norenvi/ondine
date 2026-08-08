@@ -3,3 +3,5 @@ geopandas>=1.0
 shapely>=2.0
 requests>=2.32
 py7zr>=0.20
+sqlalchemy>=2.0
+psycopg[binary]>=3.2

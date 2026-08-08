@@ -6,11 +6,23 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   Popup,
+  setWorkerUrl,
   type ExpressionSpecification,
   type MapGeoJSONFeature,
   type MapLayerMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+// Only needed for the production build: Vite bundles maplibre-gl's own code into our chunk
+// there, so its default worker URL (computed from its own import.meta.url at runtime)
+// resolves next to our bundle instead of next to the actual worker files. vite.config.ts
+// copies maplibre-gl-worker.mjs and its sibling maplibre-gl-shared.mjs (which the worker
+// itself imports by relative path) to this fixed location for that build only. In dev,
+// maplibre-gl is served unbundled straight from node_modules (see optimizeDeps.exclude
+// below), so its own self-resolved worker URL already works and must be left alone.
+if (import.meta.env.PROD) {
+  setWorkerUrl("/maplibre-gl/maplibre-gl-worker.mjs");
+}
 
 import { loadCommuneIndex, type CommuneSummary } from "./communes";
 import { HARDNESS_PROPERTY, buildFillColorExpression } from "./hardness";

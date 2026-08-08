@@ -96,10 +96,15 @@ def load_commune_movements(zip_path: Path, current_codes: set[str]) -> dict[str,
 
 
 def remap_commune_codes(df: pd.DataFrame, movements: dict[str, str], column: str) -> pd.DataFrame:
-    """Replace obsolete commune codes with their current equivalent, where known."""
+    """Replace obsolete commune codes with their current equivalent, where known.
+
+    Two distinct old codes can remap onto the same current one (both merged into a single
+    commune), which can collide with join_commune's referenceprel/commune uniqueness: re-dedup
+    after remapping rather than before.
+    """
     df = df.copy()
     df[column] = df[column].map(lambda code: movements.get(code, code))
-    return df
+    return df.drop_duplicates(subset=["referenceprel", column])
 
 
 def filter_hardness(result: pd.DataFrame) -> pd.DataFrame:
@@ -144,9 +149,7 @@ def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFram
         how="inner",
     ).drop(columns="inseecommuneprinc")
 
-    via_plv_princ = base.rename(columns={"inseecommuneprinc": "inseecommune"}).drop(
-        columns="cdreseau"
-    )
+    via_plv_princ = base.rename(columns={"inseecommuneprinc": "inseecommune"})
     via_plv_princ = via_plv_princ.dropna(subset=["inseecommune"])
 
     joined = pd.concat([via_com_udi, via_plv_princ], ignore_index=True)

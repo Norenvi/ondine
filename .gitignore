@@ -1,5 +1,6 @@
 # Python
 pipeline/.venv/
+backend/.venv/
 __pycache__/
 *.pyc
 
