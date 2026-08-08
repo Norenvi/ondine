@@ -107,25 +107,30 @@ def remap_commune_codes(df: pd.DataFrame, movements: dict[str, str], column: str
     return df.drop_duplicates(subset=["referenceprel", column])
 
 
-def filter_hardness(result: pd.DataFrame) -> pd.DataFrame:
-    """Keep only hardness measurements (Titre Hydrotimetrique, SANDRE code 1345).
+def filter_parameter(result: pd.DataFrame, cdparametre: str, expected_unit: str) -> pd.DataFrame:
+    """Keep only measurements for the given SANDRE parameter code.
 
     The unit is asserted rather than assumed: picking the wrong parameter code yields
     numbers that still look plausible on a map, so it must fail here instead.
     """
-    hardness = result[result["cdparametre"] == PARAMETER_CODE_HARDNESS].copy()
-    if hardness.empty:
-        raise ValueError(f"No measurement found for parameter {PARAMETER_CODE_HARDNESS}")
+    filtered = result[result["cdparametre"] == cdparametre].copy()
+    if filtered.empty:
+        raise ValueError(f"No measurement found for parameter {cdparametre}")
 
-    units = set(hardness["cdunitereferencesiseeaux"].dropna().unique())
-    if units != {EXPECTED_UNIT}:
+    units = set(filtered["cdunitereferencesiseeaux"].dropna().unique())
+    if units != {expected_unit}:
         raise ValueError(
-            f"Unexpected units for parameter {PARAMETER_CODE_HARDNESS}: {sorted(units)}, "
-            f"expected only {EXPECTED_UNIT}"
+            f"Unexpected units for parameter {cdparametre}: {sorted(units)}, "
+            f"expected only {expected_unit}"
         )
 
-    hardness["valtraduite"] = pd.to_numeric(hardness["valtraduite"], errors="coerce")
-    return hardness.dropna(subset=["valtraduite"])
+    filtered["valtraduite"] = pd.to_numeric(filtered["valtraduite"], errors="coerce")
+    return filtered.dropna(subset=["valtraduite"])
+
+
+def filter_hardness(result: pd.DataFrame) -> pd.DataFrame:
+    """Keep only hardness measurements (Titre Hydrotimetrique, SANDRE code 1345)."""
+    return filter_parameter(result, PARAMETER_CODE_HARDNESS, EXPECTED_UNIT)
 
 
 def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFrame) -> pd.DataFrame:

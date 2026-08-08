@@ -24,10 +24,11 @@ if (import.meta.env.PROD) {
   setWorkerUrl("/maplibre-gl/maplibre-gl-worker.mjs");
 }
 
+import { fetchAggregation } from "./api";
 import { loadCommuneIndex, type CommuneSummary } from "./communes";
-import { HARDNESS_PROPERTY, buildFillColorExpression } from "./hardness";
 import { MapPopup, type CommuneDetails } from "./MapPopup";
-import { HARDNESS_UNITS, type HardnessUnitId } from "./units";
+import { buildFillColorExpression, PARAMETERS, type ParameterId } from "./parameters";
+import type { Unit } from "./units";
 
 /** Etalab OpenMapTiles flux, no API key required. The map stays in day mode. */
 const BASEMAP_STYLE = "https://openmaptiles.geo.data.gouv.fr/styles/osm-bright/style.json";
@@ -46,32 +47,28 @@ const POPUP_CLASS = "ondine-popup";
 const INITIAL_CENTER: [number, number] = [2.5, 46.6];
 const INITIAL_ZOOM = 5;
 
-function toNumberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-function readDetails(feature: MapGeoJSONFeature): CommuneDetails {
+function readDetails(
+  feature: MapGeoJSONFeature,
+  state: Record<string, unknown>,
+): CommuneDetails {
   const props = feature.properties ?? {};
   return {
     code: typeof props.code_insee === "string" ? props.code_insee : "",
     name: typeof props.nom_officiel === "string" ? props.nom_officiel : "Commune",
-    hardness: toNumberOrNull(props[HARDNESS_PROPERTY]),
-    sampleCount: toNumberOrNull(props.sample_count),
-    latestSample: typeof props.latest_sample === "string" ? props.latest_sample : null,
+    value: typeof state.value === "number" ? state.value : null,
+    sampleCount: typeof state.sample_count === "number" ? state.sample_count : null,
+    latestSample: typeof state.latest_sample === "string" ? state.latest_sample : null,
   };
 }
 
 type MapViewProps = {
-  unitId: HardnessUnitId;
+  parameterId: ParameterId;
+  unit: Unit;
   selectedCommune: CommuneSummary | null;
   onSelectCommune: (commune: CommuneSummary) => void;
 };
 
-export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewProps) {
+export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const popup = useRef<Popup | null>(null);
@@ -87,6 +84,10 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
   // Read imperatively from the click handler, which is registered once on mount.
   const onSelectCommuneRef = useRef(onSelectCommune);
   onSelectCommuneRef.current = onSelectCommune;
+  // Read from the map's "load" handler (registered once on mount) so it always applies
+  // whichever parameter is current by the time the style has actually finished loading.
+  const parameterIdRef = useRef(parameterId);
+  parameterIdRef.current = parameterId;
   const [details, setDetails] = useState<CommuneDetails | null>(null);
 
   useEffect(() => {
@@ -94,6 +95,29 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
       communeByCode.current = new Map(communes.map((commune) => [commune.code, commune]));
     });
   }, []);
+
+  // Fetches per-commune values for a parameter and pushes them into feature-state: every
+  // known commune is visited so switching parameter also clears communes that had a value
+  // under the old parameter but have none under the new one, instead of leaving it stale.
+  async function applyAggregation(instance: MapLibreMap, id: ParameterId) {
+    const [communes, aggregation] = await Promise.all([
+      loadCommuneIndex(),
+      fetchAggregation("commune", PARAMETERS[id].apiCode),
+    ]);
+    const byCode = new Map(aggregation.map((row) => [row.code, row]));
+
+    for (const commune of communes) {
+      const row = byCode.get(commune.code);
+      instance.setFeatureState(
+        { source: SOURCE_ID, id: commune.code },
+        {
+          value: row?.valeur_moyenne ?? null,
+          sample_count: row?.nb_mesures ?? null,
+          latest_sample: row?.derniere_mesure ?? null,
+        },
+      );
+    }
+  }
 
   useEffect(() => {
     if (container.current === null || map.current !== null) {
@@ -146,7 +170,9 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
         type: "fill",
         source: SOURCE_ID,
         paint: {
-          "fill-color": buildFillColorExpression() as ExpressionSpecification,
+          "fill-color": buildFillColorExpression(
+            PARAMETERS[parameterIdRef.current].classes,
+          ) as ExpressionSpecification,
           "fill-opacity": 0.75,
         },
       });
@@ -179,6 +205,8 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
           "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
         },
       });
+
+      void applyAggregation(instance, parameterIdRef.current);
     });
 
     instance.on("mousemove", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
@@ -198,7 +226,8 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
       clearHover();
       hoveredId.current = feature.id;
       instance.setFeatureState({ source: SOURCE_ID, id: feature.id }, { hover: true });
-      setDetails(readDetails(feature));
+      const state = instance.getFeatureState({ source: SOURCE_ID, id: feature.id });
+      setDetails(readDetails(feature, state));
     });
 
     instance.on("click", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
@@ -246,6 +275,22 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
 
     popupInstance.addTo(instance);
   }, [details]);
+
+  useEffect(() => {
+    const instance = map.current;
+    // On mount this runs before the map has finished loading its style: the "load"
+    // handler above already applies parameterIdRef.current once it does, so skip here.
+    if (instance === null || instance.getSource(SOURCE_ID) === undefined) {
+      return;
+    }
+
+    instance.setPaintProperty(
+      FILL_LAYER_ID,
+      "fill-color",
+      buildFillColorExpression(PARAMETERS[parameterId].classes) as ExpressionSpecification,
+    );
+    void applyAggregation(instance, parameterId);
+  }, [parameterId]);
 
   useEffect(() => {
     const instance = map.current;
@@ -301,7 +346,7 @@ export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewPro
       <Box ref={container} sx={{ position: "absolute", inset: 0 }} />
       {details !== null &&
         createPortal(
-          <MapPopup details={details} unit={HARDNESS_UNITS[unitId]} />,
+          <MapPopup details={details} classes={PARAMETERS[parameterId].classes} unit={unit} />,
           popupContent.current,
         )}
     </>

@@ -12,23 +12,21 @@ import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 
 import { fetchCommuneMesures, type MesureOut } from "./api";
 import { communeLabel, type CommuneSummary } from "./communes";
-import { classifyHardness, contrastText } from "./hardness";
 import { formatDate } from "./format";
-import { formatHardness, formatHardnessValue, type HardnessUnit } from "./units";
-
-// Only parameter tracked so far; will become a prop once more are seeded.
-const PARAMETRE_CODE = "durete";
+import { classifyValue, contrastText, PARAMETERS, type ParameterId } from "./parameters";
+import { formatValueWithUnit, type Unit } from "./units";
 
 type CommunePanelProps = {
   commune: CommuneSummary;
-  unit: HardnessUnit;
+  parameterId: ParameterId;
+  unit: Unit;
   onClose: () => void;
 };
 
-/** Bigger detail card shown for a commune selected via search, placeholder content for now. */
-export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
-  const { code, name, hardnessMean, sampleCount, latestSample } = commune;
-  const hardnessClass = hardnessMean === null ? null : classifyHardness(hardnessMean);
+/** Bigger detail card shown for a commune selected via search. */
+export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePanelProps) {
+  const { code, name } = commune;
+  const parameter = PARAMETERS[parameterId];
 
   const [mesures, setMesures] = useState<MesureOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +36,7 @@ export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
     setMesures(null);
     setError(null);
 
-    fetchCommuneMesures(code, PARAMETRE_CODE)
+    fetchCommuneMesures(code, parameter.apiCode)
       .then((result) => {
         if (!cancelled) {
           setMesures(result);
@@ -53,7 +51,20 @@ export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, parameter.apiCode]);
+
+  // Derived from the same measurements the table below shows, rather than a second API
+  // call: mean/count/latest generalize to any parameter without backend involvement.
+  const summary = useMemo(() => {
+    if (mesures === null || mesures.length === 0) {
+      return null;
+    }
+    const mean = mesures.reduce((sum, m) => sum + m.valeur, 0) / mesures.length;
+    const latest = mesures.reduce((max, m) => (m.date_prel > max ? m.date_prel : max), mesures[0].date_prel);
+    return { mean, count: mesures.length, latest };
+  }, [mesures]);
+
+  const valueClass = summary === null ? null : classifyValue(summary.mean, parameter.classes);
 
   const rows = useMemo(
     () => (mesures ?? []).map((mesure, index) => ({ id: index, ...mesure })),
@@ -74,11 +85,11 @@ export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
         flex: 1,
         align: "right",
         headerAlign: "right",
-        valueFormatter: (value: number) => `${formatHardnessValue(value, unit)} ${unit.symbol}`,
+        valueFormatter: (value: number) => formatValueWithUnit(value, unit),
       },
       {
         field: "nom_reseau",
-        headerName: "Reseau",
+        headerName: "Réseau",
         flex: 1.5,
         valueFormatter: (value: string | null) => value ?? "?",
       },
@@ -110,7 +121,7 @@ export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
         </IconButton>
       </Stack>
 
-      {hardnessMean === null || hardnessClass === null ? (
+      {summary === null || valueClass === null ? (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Aucune mesure disponible
         </Typography>
@@ -118,22 +129,21 @@ export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
         <Box sx={{ mt: 1 }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <Typography variant="h4" component="p" sx={{ lineHeight: 1.2 }}>
-              {formatHardness(hardnessMean, unit)}
+              {formatValueWithUnit(summary.mean, unit)}
             </Typography>
             <Chip
               size="small"
-              label={hardnessClass.label}
+              label={valueClass.label}
               sx={{
                 borderRadius: 0.75,
-                backgroundColor: hardnessClass.color,
-                color: contrastText(hardnessClass.color),
+                backgroundColor: valueClass.color,
+                color: contrastText(valueClass.color),
                 fontWeight: 300,
               }}
             />
           </Stack>
           <Typography variant="caption" color="text.secondary">
-            {sampleCount ?? "?"} mesure(s)
-            {latestSample ? `, dernière le ${formatDate(latestSample)}` : ""}
+            {summary.count} mesure(s), dernière le {formatDate(summary.latest)}
           </Typography>
         </Box>
       )}

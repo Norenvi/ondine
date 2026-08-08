@@ -31,10 +31,14 @@ RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://ondine:ondine@localhost:5432/ondine"
 
-# Registry of monitored parameters. Adding one here, plus wiring its SANDRE code into the
-# pipeline's filtering step, is the entire cost of tracking a new metric end to end.
+# Registry of monitored parameters. Adding one here is the entire cost of tracking a new
+# metric end to end: "unite" doubles as the expected SANDRE unit, asserted while filtering
+# (see transform.filter_parameter) so a wrong SANDRE code fails loudly instead of quietly
+# producing a plausible-looking but wrong map.
 PARAMETERS = [
     {"cdparametre_sandre": "1345", "code": "durete", "nom": "Titre Hydrotimetrique", "unite": "°f"},
+    {"cdparametre_sandre": "1302", "code": "ph", "nom": "pH", "unite": "unité pH"},
+    {"cdparametre_sandre": "1340", "code": "nitrates", "nom": "Nitrates (en NO3)", "unite": "mg/L"},
 ]
 
 
@@ -118,14 +122,20 @@ def main() -> None:
     result, plv, com_udi = transform.load_hubeau_tables(zip_path)
     reseaux = load_reseaux(com_udi)
 
-    hardness = transform.filter_hardness(result)
-    joined = transform.join_commune(hardness, plv, com_udi)
-
     cog_zip_path = RAW_DIR / f"cog_ensemble_{args.year}_csv.zip"
+    movements: dict[str, str] | None = None
     if cog_zip_path.exists():
         current_codes = transform.load_current_commune_codes()
         movements = transform.load_commune_movements(cog_zip_path, current_codes)
-        joined = transform.remap_commune_codes(joined, movements, "inseecommune")
+
+    joined_by_parameter = {}
+    for param in PARAMETERS:
+        filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
+        joined = transform.join_commune(filtered, plv, com_udi)
+        if movements is not None:
+            joined = transform.remap_commune_codes(joined, movements, "inseecommune")
+        joined_by_parameter[param["code"]] = joined
+        print(f"{param['code']}: {len(joined)} mesures after join")
 
     with Session(engine) as session:
         truncate_all(session)
@@ -137,37 +147,47 @@ def main() -> None:
         session.execute(insert(Parametre), PARAMETERS)
         session.execute(insert(Reseau), reseaux.to_dict("records"))
 
-        durete_id = (
-            session.execute(text("SELECT id FROM parametre WHERE code = 'durete'")).scalar_one()
-        )
-        mesures = joined.rename(columns={"inseecommune": "code_insee", "dateprel": "date_prel", "valtraduite": "valeur"})
-        mesures["parametre_id"] = durete_id
-        mesures = mesures[["referenceprel", "parametre_id", "code_insee", "cdreseau", "date_prel", "valeur"]]
-
-        # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see
-        # CLAUDE.md: current scope is metropolitan France only), and a handful of codes
-        # remain genuinely unmatched (mergers Admin Express's own movements table can't
-        # resolve). The FK would reject them anyway: drop and report rather than fail loudly.
+        parametre_ids = dict(session.execute(text("SELECT code, id FROM parametre")).all())
         known_codes = set(commune["code_insee"])
-        unmatched = mesures.loc[~mesures["code_insee"].isin(known_codes), "code_insee"].nunique()
-        if unmatched:
-            print(f"{unmatched} distinct commune codes in measurements have no matching commune row, dropped")
-        mesures = mesures[mesures["code_insee"].isin(known_codes)]
 
-        # cdreseau can be missing for measurements only recovered via the PLV fallback path,
-        # and NaN is not a valid FK value: NULL is the correct "unknown network" marker.
-        mesures = mesures.where(pd.notna(mesures), None)
+        total_mesures = 0
+        for param in PARAMETERS:
+            joined = joined_by_parameter[param["code"]]
+            mesures = joined.rename(
+                columns={"inseecommune": "code_insee", "dateprel": "date_prel", "valtraduite": "valeur"}
+            )
+            mesures["parametre_id"] = parametre_ids[param["code"]]
+            mesures = mesures[
+                ["referenceprel", "parametre_id", "code_insee", "cdreseau", "date_prel", "valeur"]
+            ]
 
-        chunk_size = 20_000
-        records = mesures.to_dict("records")
-        for start in range(0, len(records), chunk_size):
-            session.execute(insert(Mesure), records[start : start + chunk_size])
+            # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see
+            # CLAUDE.md: current scope is metropolitan France only), and a handful of codes
+            # remain genuinely unmatched (mergers Admin Express's own movements table can't
+            # resolve). The FK would reject them anyway: drop and report rather than fail loudly.
+            unmatched = mesures.loc[~mesures["code_insee"].isin(known_codes), "code_insee"].nunique()
+            if unmatched:
+                print(
+                    f"{param['code']}: {unmatched} distinct commune codes have no matching "
+                    "commune row, dropped"
+                )
+            mesures = mesures[mesures["code_insee"].isin(known_codes)]
+
+            # cdreseau can be missing for measurements only recovered via the PLV fallback
+            # path, and NaN is not a valid FK value: NULL is the correct "unknown network".
+            mesures = mesures.where(pd.notna(mesures), None)
+
+            chunk_size = 20_000
+            records = mesures.to_dict("records")
+            for start in range(0, len(records), chunk_size):
+                session.execute(insert(Mesure), records[start : start + chunk_size])
+            total_mesures += len(records)
 
         session.commit()
 
     print(
         f"Seeded {len(region)} regions, {len(departement)} departements, {len(epci)} EPCI, "
-        f"{len(commune)} communes, {len(reseaux)} reseaux, {len(records)} mesures"
+        f"{len(commune)} communes, {len(reseaux)} reseaux, {total_mesures} mesures"
     )
 
 

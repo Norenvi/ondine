@@ -9,15 +9,16 @@ import Typography from "@mui/material/Typography";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 
-import { HARDNESS_CLASSES, NO_DATA_COLOR, formatRange } from "./hardness";
+import { NO_DATA_COLOR, PARAMETERS, formatRange, type ParameterId } from "./parameters";
 import type { ColorMode } from "./theme";
-import { HARDNESS_UNITS, UNIT_ORDER, type HardnessUnitId } from "./units";
+import type { UnitId } from "./units";
 
 type LegendProps = {
   mode: ColorMode;
   onToggleMode: () => void;
-  unitId: HardnessUnitId;
-  onUnitChange: (unitId: HardnessUnitId) => void;
+  parameterId: ParameterId;
+  unitId: UnitId;
+  onUnitChange: (unitId: UnitId) => void;
 };
 
 type SwatchProps = {
@@ -50,10 +51,11 @@ function LegendRow({ color, label, range }: SwatchProps) {
   );
 }
 
-/** Legend for the choropleth, so hardness is never conveyed by color alone. */
-export function Legend({ mode, onToggleMode, unitId, onUnitChange }: LegendProps) {
+/** Legend for the choropleth, so the mapped value is never conveyed by color alone. */
+export function Legend({ mode, onToggleMode, parameterId, unitId, onUnitChange }: LegendProps) {
   const isDark = mode === "dark";
-  const unit = HARDNESS_UNITS[unitId];
+  const parameter = PARAMETERS[parameterId];
+  const unit = parameter.units[unitId] ?? parameter.units[parameter.defaultUnitId];
 
   return (
     <Paper
@@ -66,9 +68,9 @@ export function Legend({ mode, onToggleMode, unitId, onUnitChange }: LegendProps
         sx={{ alignItems: "flex-start", justifyContent: "space-between" }}
       >
         <Box>
-          <Typography variant="subtitle2">Dureté de l'eau</Typography>
+          <Typography variant="subtitle2">{parameter.label}</Typography>
           <Typography variant="caption" color="text.secondary">
-            Titre hydrotimétrique, en {unit.name}
+            en {unit.name}
           </Typography>
         </Box>
         <Tooltip title={isDark ? "Passer en mode clair" : "Passer en mode sombre"}>
@@ -83,38 +85,40 @@ export function Legend({ mode, onToggleMode, unitId, onUnitChange }: LegendProps
       </Stack>
 
       <Stack spacing={0.25} sx={{ mt: 1 }}>
-        {HARDNESS_CLASSES.map((entry, index) => (
+        {parameter.classes.map((entry, index) => (
           <LegendRow
             key={entry.min}
             color={entry.color}
             label={entry.label}
-            range={formatRange(index, unit)}
+            range={formatRange(parameter.classes, index, unit)}
           />
         ))}
         <LegendRow color={NO_DATA_COLOR} label="Non renseignée" />
       </Stack>
 
-      <ToggleButtonGroup
-        exclusive
-        fullWidth
-        size="small"
-        value={unitId}
-        // null arrives when the active button is clicked again: keep the current unit
-        // rather than leaving the map with no unit at all.
-        onChange={(_event, next: HardnessUnitId | null) => {
-          if (next !== null) {
-            onUnitChange(next);
-          }
-        }}
-        aria-label="Unité de dureté"
-        sx={{ mt: 1.5 }}
-      >
-        {UNIT_ORDER.map((id) => (
-          <ToggleButton key={id} value={id} sx={{ py: 0.25, textTransform: "none" }}>
-            <Typography variant="caption">{HARDNESS_UNITS[id].symbol}</Typography>
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+      {parameter.unitOrder.length > 1 && (
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          size="small"
+          value={unitId}
+          // null arrives when the active button is clicked again: keep the current unit
+          // rather than leaving the map with no unit at all.
+          onChange={(_event, next: UnitId | null) => {
+            if (next !== null) {
+              onUnitChange(next);
+            }
+          }}
+          aria-label="Unité"
+          sx={{ mt: 1.5 }}
+        >
+          {parameter.unitOrder.map((id) => (
+            <ToggleButton key={id} value={id} sx={{ py: 0.25, textTransform: "none" }}>
+              <Typography variant="caption">{parameter.units[id].symbol}</Typography>
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      )}
     </Paper>
   );
 }

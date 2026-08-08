@@ -8,9 +8,6 @@
 export type CommuneSummary = {
   code: string;
   name: string;
-  hardnessMean: number | null;
-  sampleCount: number | null;
-  latestSample: string | null;
   /** [minLon, minLat, maxLon, maxLat], used to fit the map to the commune. */
   bbox: [number, number, number, number];
 };
@@ -27,9 +24,6 @@ type CommuneFeature = {
   properties: {
     nom_officiel?: string;
     code_insee?: string;
-    hardness_mean?: number | null;
-    sample_count?: number | null;
-    latest_sample?: string | null;
   };
 };
 
@@ -85,9 +79,6 @@ export function loadCommuneIndex(): Promise<CommuneSummary[]> {
         collection.features.map((feature) => ({
           code: feature.properties.code_insee ?? "",
           name: feature.properties.nom_officiel ?? "Commune",
-          hardnessMean: feature.properties.hardness_mean ?? null,
-          sampleCount: feature.properties.sample_count ?? null,
-          latestSample: feature.properties.latest_sample ?? null,
           bbox: computeBbox(feature.geometry),
         })),
       );
