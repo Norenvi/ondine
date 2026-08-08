@@ -3,7 +3,7 @@
  * display-time conversion of the same measurement, not a different metric.
  */
 
-export type HardnessUnitId = "f" | "ppm" | "dH";
+export type HardnessUnitId = "f" | "ppm" | "dH" | "mmolL";
 
 export type HardnessUnit = {
   id: HardnessUnitId;
@@ -39,12 +39,20 @@ export const HARDNESS_UNITS: Record<HardnessUnitId, HardnessUnit> = {
     fromFrenchDegrees: 1 / 1.7848,
     decimals: 1,
   },
+  mmolL: {
+    // mmol/L of CaCO3 equivalent, 1 mmol/L = 5.6 °f.
+    id: "mmolL",
+    symbol: "mmol/L",
+    name: "millimoles par litre (mmol/L)",
+    fromFrenchDegrees: 1 / 5.6,
+    decimals: 2,
+  },
 };
 
 export const DEFAULT_UNIT_ID: HardnessUnitId = "f";
 
 /** Ordered for the unit switch. */
-export const UNIT_ORDER: HardnessUnitId[] = ["f", "ppm", "dH"];
+export const UNIT_ORDER: HardnessUnitId[] = ["f", "ppm", "dH", "mmolL"];
 
 /** Convert a value expressed in °f to the given unit. */
 export function convertFromFrenchDegrees(value: number, unit: HardnessUnit): number {

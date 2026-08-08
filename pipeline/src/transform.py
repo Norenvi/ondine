@@ -6,7 +6,10 @@ import argparse
 import zipfile
 from pathlib import Path
 
+import geopandas as gpd
 import pandas as pd
+
+from join_geo import extract_commune_gpkg, find_admin_express_archive
 
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
@@ -35,6 +38,70 @@ def load_hubeau_tables(zip_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.D
     return result, plv, com_udi
 
 
+def load_current_commune_codes() -> set[str]:
+    """Load just the code_insee column from Admin Express COG (no geometry), as ground truth
+    for which codes are real, standalone communes today.
+    """
+    archive_path = find_admin_express_archive()
+    gpkg_path = extract_commune_gpkg(archive_path)
+    communes = gpd.read_file(gpkg_path, layer="commune", columns=["code_insee"], ignore_geometry=True)
+    return set(communes["code_insee"])
+
+
+def load_commune_movements(zip_path: Path, current_codes: set[str]) -> dict[str, str]:
+    """Load the INSEE commune movements table (mergers, renamings) and build an old -> current
+    code mapping, chain-resolved so a commune merged twice still points at its final code.
+
+    Hub'Eau's COM_UDI does not get refreshed on every commune merger, so it can reference a
+    code that no longer exists in the current Admin Express COG contours.
+
+    A code's most recent movement can be a split (one old code fanning out to several new
+    ones, e.g. a commune divided between two neighbours): there is no way to tell, from this
+    table alone, which of the resulting communes a given water network now belongs to. Those
+    are deliberately left unmapped rather than guessed. Codes also get reassociated and later
+    reestablished as independent communes again (temporary "commune associee" arrangements),
+    which produces old rows pointing at a code that is, today, still its own separate commune:
+    a code that is currently standalone is never remapped away, whatever an old row claims.
+    """
+    with zipfile.ZipFile(zip_path) as archive:
+        member = next(n for n in archive.namelist() if n.startswith("v_mvt_commune_"))
+        with archive.open(member) as f:
+            movements = pd.read_csv(f, dtype={"COM_AV": str, "COM_AP": str})
+
+    # TYPECOM_AP=COMD rows record "commune déléguée" bookkeeping, an internal sub-unit that
+    # keeps the old code alive inside the merged commune. It is not a real target commune,
+    # and Admin Express COG's commune layer does not carry it: keeping it would map codes
+    # backwards onto communes that themselves later moved on. Only real communes (COM) count.
+    movements = movements[movements["TYPECOM_AP"] == "COM"]
+
+    direct: dict[str, str] = {}
+    for old_code, group in movements.groupby("COM_AV"):
+        if old_code in current_codes:
+            continue
+        latest_date = group["DATE_EFF"].max()
+        targets = set(group.loc[group["DATE_EFF"] == latest_date, "COM_AP"]) - {old_code}
+        if len(targets) == 1:
+            direct[old_code] = next(iter(targets))
+
+    resolved: dict[str, str] = {}
+    for old_code in direct:
+        current = old_code
+        seen = {current}
+        while current in direct and direct[current] not in seen:
+            current = direct[current]
+            seen.add(current)
+        resolved[old_code] = current
+
+    return resolved
+
+
+def remap_commune_codes(df: pd.DataFrame, movements: dict[str, str], column: str) -> pd.DataFrame:
+    """Replace obsolete commune codes with their current equivalent, where known."""
+    df = df.copy()
+    df[column] = df[column].map(lambda code: movements.get(code, code))
+    return df
+
+
 def filter_hardness(result: pd.DataFrame) -> pd.DataFrame:
     """Keep only hardness measurements (Titre Hydrotimetrique, SANDRE code 1345).
 
@@ -57,17 +124,33 @@ def filter_hardness(result: pd.DataFrame) -> pd.DataFrame:
 
 
 def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFrame) -> pd.DataFrame:
-    """Join RESULT (hardness) -> PLV (referenceprel) -> COM_UDI (cdreseau) to get the commune code."""
-    joined = hardness.merge(
-        plv[["referenceprel", "cdreseau", "dateprel"]],
+    """Join RESULT (hardness) -> PLV (referenceprel) -> COM_UDI (cdreseau) to get the commune code.
+
+    COM_UDI does not always declare every commune a shared network covers: a network named
+    e.g. "LEDENON-SERNHAC" can be filed under Ledenon only, even though individual PLV rows
+    for that same network report Sernhac as inseecommuneprinc for some of their samples. Both
+    sources are unioned (deduplicated per referenceprel/commune pair) rather than picking one,
+    so a commune stays covered whichever source happens to declare it.
+    """
+    base = hardness.merge(
+        plv[["referenceprel", "cdreseau", "dateprel", "inseecommuneprinc"]],
         on="referenceprel",
         how="inner",
     )
-    joined = joined.merge(
+
+    via_com_udi = base.merge(
         com_udi[["cdreseau", "inseecommune"]],
         on="cdreseau",
         how="inner",
+    ).drop(columns="inseecommuneprinc")
+
+    via_plv_princ = base.rename(columns={"inseecommuneprinc": "inseecommune"}).drop(
+        columns="cdreseau"
     )
+    via_plv_princ = via_plv_princ.dropna(subset=["inseecommune"])
+
+    joined = pd.concat([via_com_udi, via_plv_princ], ignore_index=True)
+    joined = joined.drop_duplicates(subset=["referenceprel", "inseecommune"])
     return joined
 
 
@@ -98,6 +181,15 @@ def main() -> None:
 
     hardness = filter_hardness(result)
     joined = join_commune(hardness, plv, com_udi)
+
+    cog_zip_path = RAW_DIR / f"cog_ensemble_{args.year}_csv.zip"
+    if cog_zip_path.exists():
+        current_codes = load_current_commune_codes()
+        movements = load_commune_movements(cog_zip_path, current_codes)
+        joined = remap_commune_codes(joined, movements, "inseecommune")
+    else:
+        print(f"No commune movements file at {cog_zip_path}, skipping obsolete code remapping")
+
     agg = aggregate_by_commune(joined)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

@@ -12,6 +12,7 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+import { loadCommuneIndex, type CommuneSummary } from "./communes";
 import { HARDNESS_PROPERTY, buildFillColorExpression } from "./hardness";
 import { MapPopup, type CommuneDetails } from "./MapPopup";
 import { HARDNESS_UNITS, type HardnessUnitId } from "./units";
@@ -24,6 +25,7 @@ const SOURCE_ID = "communes";
 const FILL_LAYER_ID = "communes-fill";
 const OUTLINE_LAYER_ID = "communes-outline";
 const HOVER_LAYER_ID = "communes-hover";
+const SELECTED_LAYER_ID = "communes-selected";
 
 /** Marks the popup so its MapLibre chrome can be stripped, leaving only the MUI card. */
 const POPUP_CLASS = "ondine-popup";
@@ -43,6 +45,7 @@ function toNumberOrNull(value: unknown): number | null {
 function readDetails(feature: MapGeoJSONFeature): CommuneDetails {
   const props = feature.properties ?? {};
   return {
+    code: typeof props.code_insee === "string" ? props.code_insee : "",
     name: typeof props.nom_officiel === "string" ? props.nom_officiel : "Commune",
     hardness: toNumberOrNull(props[HARDNESS_PROPERTY]),
     sampleCount: toNumberOrNull(props.sample_count),
@@ -50,7 +53,13 @@ function readDetails(feature: MapGeoJSONFeature): CommuneDetails {
   };
 }
 
-export function MapView({ unitId }: { unitId: HardnessUnitId }) {
+type MapViewProps = {
+  unitId: HardnessUnitId;
+  selectedCommune: CommuneSummary | null;
+  onSelectCommune: (commune: CommuneSummary) => void;
+};
+
+export function MapView({ unitId, selectedCommune, onSelectCommune }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const popup = useRef<Popup | null>(null);
@@ -58,7 +67,21 @@ export function MapView({ unitId }: { unitId: HardnessUnitId }) {
   const popupContent = useRef<HTMLDivElement>(document.createElement("div"));
   // Which commune currently carries the hover feature-state, so it can be cleared.
   const hoveredId = useRef<string | number | null>(null);
+  // Which commune currently carries the selected feature-state, so it can be cleared.
+  const selectedId = useRef<string | number | null>(null);
+  // Same index the search box uses, keyed by code, so a click can resolve the
+  // full CommuneSummary (bbox included) without recomputing it from the feature.
+  const communeByCode = useRef<Map<string, CommuneSummary>>(new Map());
+  // Read imperatively from the click handler, which is registered once on mount.
+  const onSelectCommuneRef = useRef(onSelectCommune);
+  onSelectCommuneRef.current = onSelectCommune;
   const [details, setDetails] = useState<CommuneDetails | null>(null);
+
+  useEffect(() => {
+    loadCommuneIndex().then((communes) => {
+      communeByCode.current = new Map(communes.map((commune) => [commune.code, commune]));
+    });
+  }, []);
 
   useEffect(() => {
     if (container.current === null || map.current !== null) {
@@ -133,6 +156,17 @@ export function MapView({ unitId }: { unitId: HardnessUnitId }) {
           "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
         },
       });
+
+      // Drawn above hover: the commune selected via search, outlined in solid black.
+      instance.addLayer({
+        id: SELECTED_LAYER_ID,
+        type: "line",
+        source: SOURCE_ID,
+        paint: {
+          "line-color": "#000000",
+          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
+        },
+      });
     });
 
     instance.on("mousemove", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
@@ -153,6 +187,19 @@ export function MapView({ unitId }: { unitId: HardnessUnitId }) {
       hoveredId.current = feature.id;
       instance.setFeatureState({ source: SOURCE_ID, id: feature.id }, { hover: true });
       setDetails(readDetails(feature));
+    });
+
+    instance.on("click", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
+      const feature = event.features?.[0];
+      const code = feature?.properties?.code_insee;
+      if (typeof code !== "string") {
+        return;
+      }
+
+      const commune = communeByCode.current.get(code);
+      if (commune !== undefined) {
+        onSelectCommuneRef.current(commune);
+      }
     });
 
     instance.on("mouseenter", FILL_LAYER_ID, () => {
@@ -187,6 +234,34 @@ export function MapView({ unitId }: { unitId: HardnessUnitId }) {
 
     popupInstance.addTo(instance);
   }, [details]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || instance.getSource(SOURCE_ID) === undefined) {
+      return;
+    }
+
+    if (selectedId.current !== null) {
+      instance.setFeatureState({ source: SOURCE_ID, id: selectedId.current }, { selected: false });
+      selectedId.current = null;
+    }
+
+    if (selectedCommune === null) {
+      return;
+    }
+
+    selectedId.current = selectedCommune.code;
+    instance.setFeatureState({ source: SOURCE_ID, id: selectedCommune.code }, { selected: true });
+
+    const [minLon, minLat, maxLon, maxLat] = selectedCommune.bbox;
+    instance.fitBounds(
+      [
+        [minLon, minLat],
+        [maxLon, maxLat],
+      ],
+      { padding: 80, duration: 800 },
+    );
+  }, [selectedCommune]);
 
   return (
     <>

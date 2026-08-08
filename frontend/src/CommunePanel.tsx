@@ -1,69 +1,59 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
 
-import { communeLabel } from "./communes";
+import { communeLabel, type CommuneSummary } from "./communes";
 import { classifyHardness, contrastText } from "./hardness";
 import { formatDate } from "./format";
 import { formatHardness, type HardnessUnit } from "./units";
 
-export type CommuneDetails = {
-  code: string;
-  name: string;
-  hardness: number | null;
-  sampleCount: number | null;
-  latestSample: string | null;
-};
-
-type MapPopupProps = {
-  details: CommuneDetails;
+type CommunePanelProps = {
+  commune: CommuneSummary;
   unit: HardnessUnit;
-  /** Omitted in hover mode, where the card follows the cursor and closes on its own. */
-  onClose?: () => void;
+  onClose: () => void;
 };
 
-/** Detail card shown for the hovered commune, themed like the rest of the UI. */
-export function MapPopup({ details, unit, onClose }: MapPopupProps) {
-  const { code, name, hardness, sampleCount, latestSample } = details;
-  // Classification always runs on the stored °f value, whatever unit is displayed.
-  const hardnessClass = hardness === null ? null : classifyHardness(hardness);
+/** Bigger detail card shown for a commune selected via search, placeholder content for now. */
+export function CommunePanel({ commune, unit, onClose }: CommunePanelProps) {
+  const { code, name, hardnessMean, sampleCount, latestSample } = commune;
+  const hardnessClass = hardnessMean === null ? null : classifyHardness(hardnessMean);
 
   return (
-    <Paper elevation={4} sx={{ p: 1.5, minWidth: 200, maxWidth: 260 }}>
+    <Paper
+      elevation={4}
+      sx={{ position: "absolute", bottom: 32, right: 16, zIndex: 1, p: 2, minWidth: 300, maxWidth: 340 }}
+    >
       <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
-        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+        <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
           {communeLabel(name, code)}
         </Typography>
-        {onClose !== undefined && (
-          <IconButton size="small" onClick={onClose} aria-label="Fermer">
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        )}
+        <IconButton size="small" onClick={onClose} aria-label="Fermer">
+          <CloseIcon fontSize="small" />
+        </IconButton>
       </Stack>
 
-      {hardness === null || hardnessClass === null ? (
-        <Typography variant="caption" color="text.secondary">
+      {hardnessMean === null || hardnessClass === null ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Aucune mesure disponible
         </Typography>
       ) : (
-        <Box>
+        <Box sx={{ mt: 1 }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <Typography variant="h6" component="p" sx={{ lineHeight: 1.2 }}>
-              {formatHardness(hardness, unit)}
+            <Typography variant="h4" component="p" sx={{ lineHeight: 1.2 }}>
+              {formatHardness(hardnessMean, unit)}
             </Typography>
             <Chip
               size="small"
               label={hardnessClass.label}
               sx={{
-                height: 20,
                 borderRadius: 0.75,
                 backgroundColor: hardnessClass.color,
                 color: contrastText(hardnessClass.color),
-                fontSize: 11,
                 fontWeight: 300,
               }}
             />
@@ -74,6 +64,12 @@ export function MapPopup({ details, unit, onClose }: MapPopupProps) {
           </Typography>
         </Box>
       )}
+
+      <Divider sx={{ my: 1.5 }} />
+
+      <Typography variant="caption" color="text.secondary">
+        Code INSEE : {commune.code}
+      </Typography>
     </Paper>
   );
 }
