@@ -1,0 +1,18 @@
+services:
+  caddy:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+  # Pipeline : pas un service permanent, lancer a la demande, ex:
+  #   docker compose run --rm pipeline python src/download.py
+  pipeline:
+    build:
+      context: ./pipeline
+    volumes:
+      - ./pipeline:/app
+    profiles: ["tools"]

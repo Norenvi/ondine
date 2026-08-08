@@ -1,0 +1,20 @@
+# Python
+pipeline/.venv/
+__pycache__/
+*.pyc
+
+# Data (regenerable / volumineuses)
+pipeline/data/raw/*
+pipeline/data/processed/*
+!pipeline/data/raw/.gitkeep
+!pipeline/data/processed/.gitkeep
+frontend/public/data/*
+!frontend/public/data/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Divers
+.DS_Store
+*.log

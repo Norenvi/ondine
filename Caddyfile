@@ -1,0 +1,11 @@
+:80 {
+	root * /srv
+	encode zstd gzip
+
+	# Fichiers geo : cache court cote navigateur, on regenere mensuellement
+	@geo path *.geojson *.mbtiles *.pbf
+	header @geo Cache-Control "public, max-age=3600"
+
+	file_server
+	try_files {path} /index.html
+}
