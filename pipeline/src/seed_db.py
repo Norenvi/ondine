@@ -39,6 +39,9 @@ PARAMETERS = [
     {"cdparametre_sandre": "1345", "code": "durete", "nom": "Titre Hydrotimetrique", "unite": "°f"},
     {"cdparametre_sandre": "1302", "code": "ph", "nom": "pH", "unite": "unité pH"},
     {"cdparametre_sandre": "1340", "code": "nitrates", "nom": "Nitrates (en NO3)", "unite": "mg/L"},
+    {"cdparametre_sandre": "1303", "code": "conductivite", "nom": "Conductivite a 25C", "unite": "µS/cm"},
+    {"cdparametre_sandre": "1295", "code": "turbidite", "nom": "Turbidite nephelometrique", "unite": "NFU"},
+    {"cdparametre_sandre": "1398", "code": "chlore_libre", "nom": "Chlore libre", "unite": "mg(Cl2)/L"},
 ]
 
 
@@ -108,7 +111,25 @@ def truncate_all(session: Session) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--year", type=int, required=True, help="Year of Hub'Eau data to seed")
+    parser.add_argument(
+        "--parametres",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated subset of parameter codes to seed (e.g. 'durete,ph,nitrates'). "
+            "Defaults to all of PARAMETERS. Useful when the target database has a storage "
+            "quota too small for every parameter (e.g. Neon's free tier, 512 MB)."
+        ),
+    )
     args = parser.parse_args()
+
+    parameters = PARAMETERS
+    if args.parametres is not None:
+        wanted = {code.strip() for code in args.parametres.split(",")}
+        parameters = [p for p in PARAMETERS if p["code"] in wanted]
+        missing = wanted - {p["code"] for p in parameters}
+        if missing:
+            raise ValueError(f"Unknown parameter code(s): {sorted(missing)}")
 
     database_url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     engine = create_engine(database_url)
@@ -129,7 +150,7 @@ def main() -> None:
         movements = transform.load_commune_movements(cog_zip_path, current_codes)
 
     joined_by_parameter = {}
-    for param in PARAMETERS:
+    for param in parameters:
         filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
         joined = transform.join_commune(filtered, plv, com_udi)
         if movements is not None:
@@ -144,14 +165,14 @@ def main() -> None:
         session.execute(insert(Departement), departement.to_dict("records"))
         session.execute(insert(Epci), epci.to_dict("records"))
         session.execute(insert(Commune), commune.to_dict("records"))
-        session.execute(insert(Parametre), PARAMETERS)
+        session.execute(insert(Parametre), parameters)
         session.execute(insert(Reseau), reseaux.to_dict("records"))
 
         parametre_ids = dict(session.execute(text("SELECT code, id FROM parametre")).all())
         known_codes = set(commune["code_insee"])
 
         total_mesures = 0
-        for param in PARAMETERS:
+        for param in parameters:
             joined = joined_by_parameter[param["code"]]
             mesures = joined.rename(
                 columns={"inseecommune": "code_insee", "dateprel": "date_prel", "valtraduite": "valeur"}

@@ -13,7 +13,13 @@ export type ValueClass = {
   color: string;
 };
 
-export type ParameterId = "durete" | "ph" | "nitrates";
+export type ParameterId =
+  | "durete"
+  | "ph"
+  | "nitrates"
+  | "conductivite"
+  | "turbidite"
+  | "chlore_libre";
 
 export type ParameterDef = {
   id: ParameterId;
@@ -119,6 +125,74 @@ const NITRATES_UNITS: Record<string, Unit> = {
   },
 };
 
+/**
+ * Diverging scale like pH, not sequential: French regulation requires conductivity
+ * between 200 and 1100 µS/cm at the tap, and both a too-low (very soft, poorly
+ * mineralised) and too-high (over-mineralised) reading are flagged as out of range.
+ * Colors mirror PH_CLASSES for visual consistency across "bounded range" parameters.
+ */
+const CONDUCTIVITE_CLASSES: ValueClass[] = [
+  { min: 0, label: "Très faible (hors norme)", color: "#d73027" },
+  { min: 200, label: "Faible", color: "#fc8d59" },
+  { min: 400, label: "Normale", color: "#91cf60" },
+  { min: 700, label: "Élevée", color: "#91bfdb" },
+  { min: 1100, label: "Très élevée (hors norme)", color: "#4575b4" },
+];
+
+const CONDUCTIVITE_UNITS: Record<string, Unit> = {
+  uScm: {
+    id: "uScm",
+    symbol: "µS/cm",
+    name: "microsiemens par centimètre (µS/cm)",
+    fromBaseUnit: 1,
+    decimals: 0,
+  },
+};
+
+/**
+ * Sequential, low to high concern: clearer water is always the better reading.
+ */
+const TURBIDITE_CLASSES: ValueClass[] = [
+  { min: 0, label: "Très claire", color: "#1a9850" },
+  { min: 0.5, label: "Claire", color: "#91cf60" },
+  { min: 1, label: "Trouble", color: "#fee08b" },
+  { min: 2, label: "Très trouble", color: "#fc8d59" },
+  { min: 5, label: "Hors norme", color: "#d73027" },
+];
+
+const TURBIDITE_UNITS: Record<string, Unit> = {
+  nfu: {
+    id: "nfu",
+    symbol: "NFU",
+    name: "unites nephelometriques de formazine (NFU)",
+    fromBaseUnit: 1,
+    decimals: 2,
+  },
+};
+
+/**
+ * Sequential: a low residual is normal (and needed for disinfection), a high one signals
+ * an increasingly noticeable taste/odour complaint threshold, hence "concern" reads the
+ * same left-to-right direction as nitrates/turbidity despite chlorine being intentional.
+ */
+const CHLORE_LIBRE_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 0.1, label: "Normale", color: "#91cf60" },
+  { min: 0.3, label: "Élevée", color: "#fee08b" },
+  { min: 0.5, label: "Très élevée", color: "#fc8d59" },
+  { min: 1, label: "Hors norme (goût)", color: "#d73027" },
+];
+
+const CHLORE_LIBRE_UNITS: Record<string, Unit> = {
+  mgL: {
+    id: "mgL",
+    symbol: "mg(Cl2)/L",
+    name: "milligrammes de chlore par litre (mg(Cl2)/L)",
+    fromBaseUnit: 1,
+    decimals: 2,
+  },
+};
+
 export const PARAMETERS: Record<ParameterId, ParameterDef> = {
   durete: {
     id: "durete",
@@ -147,9 +221,43 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     unitOrder: ["mgL"],
     defaultUnitId: "mgL",
   },
+  conductivite: {
+    id: "conductivite",
+    apiCode: "conductivite",
+    label: "Conductivité",
+    classes: CONDUCTIVITE_CLASSES,
+    units: CONDUCTIVITE_UNITS,
+    unitOrder: ["uScm"],
+    defaultUnitId: "uScm",
+  },
+  turbidite: {
+    id: "turbidite",
+    apiCode: "turbidite",
+    label: "Turbidité",
+    classes: TURBIDITE_CLASSES,
+    units: TURBIDITE_UNITS,
+    unitOrder: ["nfu"],
+    defaultUnitId: "nfu",
+  },
+  chlore_libre: {
+    id: "chlore_libre",
+    apiCode: "chlore_libre",
+    label: "Chlore libre",
+    classes: CHLORE_LIBRE_CLASSES,
+    units: CHLORE_LIBRE_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+  },
 };
 
-export const PARAMETER_ORDER: ParameterId[] = ["durete", "ph", "nitrates"];
+export const PARAMETER_ORDER: ParameterId[] = [
+  "durete",
+  "ph",
+  "nitrates",
+  "conductivite",
+  "turbidite",
+  "chlore_libre",
+];
 
 /** Communes with no measurement stay visible on the map, in neutral gray. */
 export const NO_DATA_COLOR = "#d6d5d1";

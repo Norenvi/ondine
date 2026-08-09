@@ -10,8 +10,11 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
+import BlurOnIcon from "@mui/icons-material/BlurOn";
+import BoltIcon from "@mui/icons-material/Bolt";
 import GrassIcon from "@mui/icons-material/Grass";
 import OpacityIcon from "@mui/icons-material/Opacity";
+import SanitizerIcon from "@mui/icons-material/Sanitizer";
 import ScienceIcon from "@mui/icons-material/Science";
 import SearchIcon from "@mui/icons-material/Search";
 
@@ -35,6 +38,9 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   durete: <OpacityIcon fontSize="small" />,
   ph: <ScienceIcon fontSize="small" />,
   nitrates: <GrassIcon fontSize="small" />,
+  conductivite: <BoltIcon fontSize="small" />,
+  turbidite: <BlurOnIcon fontSize="small" />,
+  chlore_libre: <SanitizerIcon fontSize="small" />,
 };
 
 /** App-wide top bar: title on the left, commune search + parameter picker on the right. */
