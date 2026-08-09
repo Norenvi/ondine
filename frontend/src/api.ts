@@ -1,6 +1,10 @@
 /**
- * Client for the FastAPI backend, reverse-proxied by Caddy under /api so there is no
- * cross-origin request to configure.
+ * Client for the FastAPI backend. Same-origin "/api" by default (Caddy's handle_path
+ * strips the prefix and proxies to the backend, see Caddyfile), so no cross-origin request
+ * to configure locally/in docker-compose. VITE_API_BASE_URL overrides this with a full,
+ * cross-origin URL when the frontend and backend are deployed as separate services with no
+ * shared reverse proxy in front (e.g. Render static site + Render web service): the backend
+ * enables CORS for exactly this case (see backend/src/main.py).
  */
 
 export type MesureOut = {
@@ -20,7 +24,7 @@ export type AggregationOut = {
 
 export type NiveauZoom = "commune" | "epci" | "departement" | "region";
 
-const API_BASE = "/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export async function fetchCommuneMesures(
   codeInsee: string,
