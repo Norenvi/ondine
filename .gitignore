@@ -11,6 +11,9 @@ pipeline/data/processed/*
 !pipeline/data/processed/.gitkeep
 frontend/public/data/*
 !frontend/public/data/.gitkeep
+# Exception : committe malgre "regenerable", car le build Render (deploiement du Static
+# Site) n'execute pas le pipeline Python, donc ce fichier doit deja etre dans le repo.
+!frontend/public/data/communes_durete.geojson
 
 # Frontend
 frontend/node_modules/
