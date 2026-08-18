@@ -25,7 +25,7 @@ jobs:
       - name: Configure OCI credentials
         run: |
           mkdir -p ~/.oci
-          printf '%s' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" | base64 -d > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
           printf '%s\n' "$SSH_PUBLIC_KEY" > ~/.oci/ssh_key.pub
           cat > ~/.oci/config <<EOF
