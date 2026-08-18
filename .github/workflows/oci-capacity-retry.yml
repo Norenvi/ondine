@@ -27,6 +27,7 @@ jobs:
           mkdir -p ~/.oci
           printf '%s' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
+          printf '%s\n' "$SSH_PUBLIC_KEY" > ~/.oci/ssh_key.pub
           cat > ~/.oci/config <<EOF
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
@@ -66,7 +67,7 @@ jobs:
             --subnet-id "$SUBNET_ID" \
             --assign-public-ip true \
             --display-name "$DISPLAY_NAME" \
-            --ssh-authorized-keys-string "$SSH_PUBLIC_KEY" \
+            --ssh-authorized-keys-file ~/.oci/ssh_key.pub \
             --wait-for-state RUNNING \
             --max-wait-seconds 240 \
             2>&1)
