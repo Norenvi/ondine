@@ -6,10 +6,24 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
 
+import type { NiveauZoom } from "./api";
 import { communeLabel } from "./communes";
 import { formatDate } from "./format";
 import { classifyValue, contrastText, type ValueClass } from "./parameters";
 import { formatValueWithUnit, type Unit } from "./units";
+
+/** Only commune and departement codes mean anything to a reader alongside the name: a
+ * commune's dash-department suffix from communeLabel, a departement's own code in
+ * parentheses (e.g. "Ain (01)"). EPCI/region codes aren't meaningful shown this way. */
+function entityTitle(level: NiveauZoom, name: string, code: string): string {
+  if (level === "commune") {
+    return communeLabel(name, code);
+  }
+  if (level === "departement") {
+    return `${name} (${code})`;
+  }
+  return name;
+}
 
 export type CommuneDetails = {
   code: string;
@@ -23,12 +37,12 @@ type MapPopupProps = {
   details: CommuneDetails;
   classes: ValueClass[];
   unit: Unit;
-  /** Omitted in hover mode, where the card follows the cursor and closes on its own. */
+  level: NiveauZoom;
   onClose?: () => void;
 };
 
-/** Detail card shown for the hovered commune, themed like the rest of the UI. */
-export function MapPopup({ details, classes, unit, onClose }: MapPopupProps) {
+/** Detail card shown for the hovered feature, themed like the rest of the UI. */
+export function MapPopup({ details, classes, unit, level, onClose }: MapPopupProps) {
   const { code, name, value, sampleCount, latestSample } = details;
   // Classification always runs on the stored base-unit value, whatever unit is displayed.
   const valueClass = value === null ? null : classifyValue(value, classes);
@@ -37,7 +51,7 @@ export function MapPopup({ details, classes, unit, onClose }: MapPopupProps) {
     <Paper elevation={4} sx={{ p: 1.5, minWidth: 200, maxWidth: 260 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-          {communeLabel(name, code)}
+          {entityTitle(level, name, code)}
         </Typography>
         {onClose !== undefined && (
           <IconButton size="small" onClick={onClose} aria-label="Fermer">

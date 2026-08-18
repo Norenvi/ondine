@@ -146,6 +146,24 @@ Non fait / connu : pas de tuiles MVT, pas de multi-zoom sur la carte elle-même 
 
 Pour ajouter un nouveau paramètre (ex. bactériologie, plomb) : voir la discussion archivée sur les indicateurs candidats (nitrates/pH/pesticides faciles, bactériologie nécessite un mode d'agrégation différent — taux de conformité plutôt que moyenne, car les valeurs sont quasi binaires présence/absence).
 
+## Réflexions en attente (à rediscuter avant implémentation)
+
+**Pertinence statistique de la moyenne aux niveaux EPCI/département/région.** La moyenne actuelle (`AVG` SQL sur les mesures individuelles, pas une moyenne de moyennes par commune) peut masquer une forte hétérogénéité intra-niveau : un département moitié eau très douce, moitié eau très dure, affiche "moyen" sans représenter aucune des deux réalités. Pour la dureté (paramètre informatif, pas de seuil réglementaire), une moyenne reste défendable. Pour le pH et les nitrates (paramètres à seuil réglementaire), c'est plus problématique : une moyenne dans les clous peut cacher des communes hors norme, le même raisonnement que celui déjà retenu pour la bactériologie (voir paragraphe ci-dessus) s'applique, dans une moindre mesure, à tout paramètre à seuil.
+
+Pistes envisagées, par ordre de coût croissant :
+1. Ajouter min/max (voire écart-type) à la réponse d'agrégation existante (un `func.min`/`func.max` SQL en plus, pas de migration) et les afficher dans le popup/tooltip aux niveaux non-commune, pour signaler que le chiffre affiché masque de la variation, sans changer la statistique elle-même.
+2. Pour pH/nitrates spécifiquement, calculer un taux de conformité (part des mesures ou des communes hors seuil réglementaire) plutôt que ou en complément de la moyenne. Change la sémantique de l'agrégation, probablement une colonne ou un endpoint séparé plutôt qu'un ajout mineur.
+
+Piste 1 recommandée comme premier pas si le sujet est repris : coût faible, ne nécessite pas de trancher sur "la bonne" statistique, et communique déjà l'essentiel (le chiffre est une moyenne sur un ensemble hétérogène).
+
+**Idée de classement général, toutes communes confondues sur tous les paramètres (`Leaderboard.tsx`).** Actuellement le classement est par paramètre (un seul `apiCode` à la fois). Idée soumise : un classement composite, une seule note par commune combinant tous les paramètres présents, pour répondre à "quelle commune a la meilleure eau, tout confondu".
+
+Deux difficultés avant de s'y lancer, pas juste un choix d'implémentation :
+- Les paramètres actuels ne sont pas tous comparables sur l'axe "meilleur/moins bon" de la même façon. Nitrates/turbidité/chlore libre sont des paramètres de qualité/santé à sens unique (plus bas = mieux, dans les limites du raisonnable). Le pH et la conductivité sont divergents (un extrême dans un sens ou l'autre est hors norme, le centre est le mieux). La dureté, elle, n'a pas de seuil réglementaire ni de "mieux" objectif : c'est une préférence (eau douce ou dure ont chacune leurs inconvénients, entartrage vs corrosion). Recommandation si le sujet est repris : composer le score sur les paramètres à seuil réglementaire (pH, nitrates, conductivité, turbidité, chlore libre), laisser la dureté hors du score composite ou l'afficher à part, plutôt que de l'agréger avec les autres comme si "plus doux" était toujours "mieux".
+- Couverture inégale : toutes les communes n'ont pas de mesure pour tous les paramètres (voir la répartition dans "État actuel"). Un score composite doit décider quoi faire d'une commune avec seulement 2 paramètres sur 5 mesurés : l'exclure, la noter sur les seuls paramètres disponibles (au risque de favoriser les communes les moins mesurées), ou exiger une couverture minimale avant de l'inclure au classement.
+
+Piste de mise en oeuvre si retenu : convertir chaque valeur en index de classe (`classifyValue`, déjà utilisé pour la couleur choropleth) plutôt qu'en score brut, ça évite d'avoir à normaliser des unités hétérogènes (°f, mg/L, µS/cm, NFU) et donne directement une échelle commune (0 = meilleure classe, 4 = pire) à moyenner ou sommer.
+
 ## Commandes utiles
 
 ```bash

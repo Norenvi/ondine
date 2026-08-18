@@ -3,8 +3,10 @@ import Box from "@mui/material/Box";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 
+import type { NiveauZoom } from "./api";
 import { CommunePanel } from "./CommunePanel";
-import type { CommuneSummary } from "./communes";
+import type { EntitySummary } from "./entities";
+import { Leaderboard } from "./Leaderboard";
 import { Legend } from "./Legend";
 import { MapView } from "./MapView";
 import { PARAMETERS, type ParameterId } from "./parameters";
@@ -18,12 +20,22 @@ function App() {
   const { mode, theme, toggleMode } = useColorMode();
   const [parameterId, setParameterId] = useState<ParameterId>(DEFAULT_PARAMETER_ID);
   const [unitId, setUnitId] = useState<UnitId>(PARAMETERS[DEFAULT_PARAMETER_ID].defaultUnitId);
-  const [selectedCommune, setSelectedCommune] = useState<CommuneSummary | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<EntitySummary | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [level, setLevel] = useState<NiveauZoom>("commune");
+
+  function handleSelectEntity(entity: EntitySummary) {
+    setLeaderboardOpen(false);
+    setSelectedEntity(entity);
+  }
+
+  function handleOpenLeaderboard() {
+    setSelectedEntity(null);
+    setLeaderboardOpen(true);
+  }
 
   function handleParameterChange(next: ParameterId) {
     setParameterId(next);
-    // Units are parameter-specific (e.g. ppm makes no sense for pH): switch to the new
-    // parameter's default rather than carrying over an id it doesn't recognise.
     setUnitId(PARAMETERS[next].defaultUnitId);
   }
 
@@ -34,30 +46,38 @@ function App() {
       <CssBaseline />
       <Box sx={{ display: "flex", flexDirection: "column", width: "100%", height: "100vh" }}>
         <TopBar
-          onSelectCommune={setSelectedCommune}
+          onSelectEntity={handleSelectEntity}
           parameterId={parameterId}
           onParameterChange={handleParameterChange}
+          mode={mode}
+          onToggleMode={toggleMode}
+          onOpenLeaderboard={handleOpenLeaderboard}
+          level={level}
+          onLevelChange={setLevel}
         />
         <Box sx={{ position: "relative", flexGrow: 1, minHeight: 0 }}>
           <MapView
             parameterId={parameterId}
             unit={unit}
-            selectedCommune={selectedCommune}
-            onSelectCommune={setSelectedCommune}
+            level={level}
+            selectedEntity={selectedEntity}
+            onSelectEntity={handleSelectEntity}
           />
-          <Legend
-            mode={mode}
-            onToggleMode={toggleMode}
-            parameterId={parameterId}
-            unitId={unitId}
-            onUnitChange={setUnitId}
-          />
-          {selectedCommune !== null && (
+          <Legend parameterId={parameterId} unitId={unitId} onUnitChange={setUnitId} />
+          {selectedEntity !== null && selectedEntity.level === "commune" && (
             <CommunePanel
-              commune={selectedCommune}
+              commune={selectedEntity}
               parameterId={parameterId}
               unit={unit}
-              onClose={() => setSelectedCommune(null)}
+              onClose={() => setSelectedEntity(null)}
+            />
+          )}
+          {leaderboardOpen && (
+            <Leaderboard
+              parameterId={parameterId}
+              unit={unit}
+              onSelectCommune={handleSelectEntity}
+              onClose={() => setLeaderboardOpen(false)}
             />
           )}
         </Box>

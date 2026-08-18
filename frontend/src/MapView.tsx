@@ -24,8 +24,9 @@ if (import.meta.env.PROD) {
   setWorkerUrl("/maplibre-gl/maplibre-gl-worker.mjs");
 }
 
-import { fetchAggregation } from "./api";
-import { loadCommuneIndex, type CommuneSummary } from "./communes";
+import { fetchAggregation, type NiveauZoom } from "./api";
+import { loadEntityIndex, type EntitySummary } from "./entities";
+import { LEVEL_CONFIG, type LevelConfig } from "./levels";
 import { MapPopup, type CommuneDetails } from "./MapPopup";
 import { buildFillColorExpression, PARAMETERS, type ParameterId } from "./parameters";
 import type { Unit } from "./units";
@@ -33,12 +34,12 @@ import type { Unit } from "./units";
 /** Etalab OpenMapTiles flux, no API key required. The map stays in day mode. */
 const BASEMAP_STYLE = "https://openmaptiles.geo.data.gouv.fr/styles/osm-bright/style.json";
 
-const DATA_URL = "/data/communes_durete.geojson";
 const SOURCE_ID = "communes";
 const FILL_LAYER_ID = "communes-fill";
 const OUTLINE_LAYER_ID = "communes-outline";
 const HOVER_LAYER_ID = "communes-hover";
 const SELECTED_LAYER_ID = "communes-selected";
+const LAYER_IDS = [FILL_LAYER_ID, OUTLINE_LAYER_ID, HOVER_LAYER_ID, SELECTED_LAYER_ID];
 
 /** Marks the popup so its MapLibre chrome can be stripped, leaving only the MUI card. */
 const POPUP_CLASS = "ondine-popup";
@@ -50,11 +51,12 @@ const INITIAL_ZOOM = 5;
 function readDetails(
   feature: MapGeoJSONFeature,
   state: Record<string, unknown>,
+  config: LevelConfig,
 ): CommuneDetails {
   const props = feature.properties ?? {};
   return {
-    code: typeof props.code_insee === "string" ? props.code_insee : "",
-    name: typeof props.nom_officiel === "string" ? props.nom_officiel : "Commune",
+    code: typeof props[config.idProperty] === "string" ? (props[config.idProperty] as string) : "",
+    name: typeof props[config.nameProperty] === "string" ? (props[config.nameProperty] as string) : "Zone",
     value: typeof state.value === "number" ? state.value : null,
     sampleCount: typeof state.sample_count === "number" ? state.sample_count : null,
     latestSample: typeof state.latest_sample === "string" ? state.latest_sample : null,
@@ -64,52 +66,61 @@ function readDetails(
 type MapViewProps = {
   parameterId: ParameterId;
   unit: Unit;
-  selectedCommune: CommuneSummary | null;
-  onSelectCommune: (commune: CommuneSummary) => void;
+  level: NiveauZoom;
+  selectedEntity: EntitySummary | null;
+  onSelectEntity: (entity: EntitySummary) => void;
 };
 
-export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }: MapViewProps) {
+export function MapView({ parameterId, unit, level, selectedEntity, onSelectEntity }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const popup = useRef<Popup | null>(null);
   // Stable DOM node that the MapLibre popup owns and React portals into.
   const popupContent = useRef<HTMLDivElement>(document.createElement("div"));
-  // Which commune currently carries the hover feature-state, so it can be cleared.
+  // Which feature currently carries the hover feature-state, so it can be cleared.
   const hoveredId = useRef<string | number | null>(null);
-  // Which commune currently carries the selected feature-state, so it can be cleared.
+  // Which feature currently carries the selected feature-state, so it can be cleared.
   const selectedId = useRef<string | number | null>(null);
-  // Same index the search box uses, keyed by code, so a click can resolve the
-  // full CommuneSummary (bbox included) without recomputing it from the feature.
-  const communeByCode = useRef<Map<string, CommuneSummary>>(new Map());
+  // Same index search uses for the current level, keyed by code, so a click can resolve
+  // the full EntitySummary (bbox included) without recomputing it from the feature.
+  const entityByCode = useRef<Map<string, EntitySummary>>(new Map());
   // Read imperatively from the click handler, which is registered once on mount.
-  const onSelectCommuneRef = useRef(onSelectCommune);
-  onSelectCommuneRef.current = onSelectCommune;
-  // Read from the map's "load" handler (registered once on mount) so it always applies
-  // whichever parameter is current by the time the style has actually finished loading.
+  const onSelectEntityRef = useRef(onSelectEntity);
+  onSelectEntityRef.current = onSelectEntity;
+  // Read from handlers registered once on mount (the "load" handler, and the click/hover
+  // handlers below), so they always see whichever parameter/level is current.
   const parameterIdRef = useRef(parameterId);
   parameterIdRef.current = parameterId;
+  const levelRef = useRef(level);
+  levelRef.current = level;
   const [details, setDetails] = useState<CommuneDetails | null>(null);
 
   useEffect(() => {
-    loadCommuneIndex().then((communes) => {
-      communeByCode.current = new Map(communes.map((commune) => [commune.code, commune]));
+    let cancelled = false;
+    loadEntityIndex(level).then((entities) => {
+      if (!cancelled) {
+        entityByCode.current = new Map(entities.map((entity) => [entity.code, entity]));
+      }
     });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [level]);
 
-  // Fetches per-commune values for a parameter and pushes them into feature-state: every
-  // known commune is visited so switching parameter also clears communes that had a value
-  // under the old parameter but have none under the new one, instead of leaving it stale.
-  async function applyAggregation(instance: MapLibreMap, id: ParameterId) {
-    const [communes, aggregation] = await Promise.all([
-      loadCommuneIndex(),
-      fetchAggregation("commune", PARAMETERS[id].apiCode),
+  // Fetches per-feature values for a parameter/level and pushes them into feature-state:
+  // every known feature is visited so switching parameter also clears features that had a
+  // value under the old parameter but have none under the new one, instead of leaving it stale.
+  async function applyAggregation(instance: MapLibreMap, id: ParameterId, forLevel: NiveauZoom) {
+    const [entities, aggregation] = await Promise.all([
+      loadEntityIndex(forLevel),
+      fetchAggregation(forLevel, PARAMETERS[id].apiCode),
     ]);
     const byCode = new Map(aggregation.map((row) => [row.code, row]));
 
-    for (const commune of communes) {
-      const row = byCode.get(commune.code);
+    for (const entity of entities) {
+      const row = byCode.get(entity.code);
       instance.setFeatureState(
-        { source: SOURCE_ID, id: commune.code },
+        { source: SOURCE_ID, id: entity.code },
         {
           value: row?.valeur_moyenne ?? null,
           sample_count: row?.nb_mesures ?? null,
@@ -117,6 +128,56 @@ export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }:
         },
       );
     }
+  }
+
+  function addLayersForLevel(instance: MapLibreMap, forLevel: NiveauZoom, id: ParameterId) {
+    const config = LEVEL_CONFIG[forLevel];
+
+    instance.addSource(SOURCE_ID, {
+      type: "geojson",
+      data: config.dataUrl,
+      // Feature-state needs stable ids, and the source data has no numeric id field.
+      promoteId: config.idProperty,
+    });
+
+    instance.addLayer({
+      id: FILL_LAYER_ID,
+      type: "fill",
+      source: SOURCE_ID,
+      paint: {
+        "fill-color": buildFillColorExpression(PARAMETERS[id].classes) as ExpressionSpecification,
+        "fill-opacity": 0.75,
+      },
+    });
+
+    instance.addLayer({
+      id: OUTLINE_LAYER_ID,
+      type: "line",
+      source: SOURCE_ID,
+      paint: { "line-color": "#ffffff", "line-width": 0.3, "line-opacity": 0.6 },
+    });
+
+    // Drawn above the plain outline: width collapses to 0 unless the feature is hovered.
+    instance.addLayer({
+      id: HOVER_LAYER_ID,
+      type: "line",
+      source: SOURCE_ID,
+      paint: {
+        "line-color": "#0b1b33",
+        "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
+      },
+    });
+
+    // Drawn above hover: the commune selected via search, outlined in solid black.
+    instance.addLayer({
+      id: SELECTED_LAYER_ID,
+      type: "line",
+      source: SOURCE_ID,
+      paint: {
+        "line-color": "#000000",
+        "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
+      },
+    });
   }
 
   useEffect(() => {
@@ -158,55 +219,8 @@ export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }:
     };
 
     instance.on("load", () => {
-      instance.addSource(SOURCE_ID, {
-        type: "geojson",
-        data: DATA_URL,
-        // Feature-state needs stable ids, and the source data has no numeric id field.
-        promoteId: "code_insee",
-      });
-
-      instance.addLayer({
-        id: FILL_LAYER_ID,
-        type: "fill",
-        source: SOURCE_ID,
-        paint: {
-          "fill-color": buildFillColorExpression(
-            PARAMETERS[parameterIdRef.current].classes,
-          ) as ExpressionSpecification,
-          "fill-opacity": 0.75,
-        },
-      });
-
-      instance.addLayer({
-        id: OUTLINE_LAYER_ID,
-        type: "line",
-        source: SOURCE_ID,
-        paint: { "line-color": "#ffffff", "line-width": 0.3, "line-opacity": 0.6 },
-      });
-
-      // Drawn above the plain outline: width collapses to 0 unless the feature is hovered.
-      instance.addLayer({
-        id: HOVER_LAYER_ID,
-        type: "line",
-        source: SOURCE_ID,
-        paint: {
-          "line-color": "#0b1b33",
-          "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
-        },
-      });
-
-      // Drawn above hover: the commune selected via search, outlined in solid black.
-      instance.addLayer({
-        id: SELECTED_LAYER_ID,
-        type: "line",
-        source: SOURCE_ID,
-        paint: {
-          "line-color": "#000000",
-          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
-        },
-      });
-
-      void applyAggregation(instance, parameterIdRef.current);
+      addLayersForLevel(instance, levelRef.current, parameterIdRef.current);
+      void applyAggregation(instance, parameterIdRef.current, levelRef.current);
     });
 
     instance.on("mousemove", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
@@ -227,19 +241,20 @@ export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }:
       hoveredId.current = feature.id;
       instance.setFeatureState({ source: SOURCE_ID, id: feature.id }, { hover: true });
       const state = instance.getFeatureState({ source: SOURCE_ID, id: feature.id });
-      setDetails(readDetails(feature, state));
+      setDetails(readDetails(feature, state, LEVEL_CONFIG[levelRef.current]));
     });
 
     instance.on("click", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
       const feature = event.features?.[0];
-      const code = feature?.properties?.code_insee;
+      const config = LEVEL_CONFIG[levelRef.current];
+      const code = feature?.properties?.[config.idProperty];
       if (typeof code !== "string") {
         return;
       }
 
-      const commune = communeByCode.current.get(code);
-      if (commune !== undefined) {
-        onSelectCommuneRef.current(commune);
+      const entity = entityByCode.current.get(code);
+      if (entity !== undefined) {
+        onSelectEntityRef.current(entity);
       }
     });
 
@@ -289,7 +304,7 @@ export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }:
       "fill-color",
       buildFillColorExpression(PARAMETERS[parameterId].classes) as ExpressionSpecification,
     );
-    void applyAggregation(instance, parameterId);
+    void applyAggregation(instance, parameterId, levelRef.current);
   }, [parameterId]);
 
   useEffect(() => {
@@ -298,27 +313,65 @@ export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }:
       return;
     }
 
+    if (hoveredId.current !== null) {
+      hoveredId.current = null;
+    }
+    if (selectedId.current !== null) {
+      selectedId.current = null;
+    }
+    setDetails(null);
+
+    for (const layerId of LAYER_IDS) {
+      if (instance.getLayer(layerId) !== undefined) {
+        instance.removeLayer(layerId);
+      }
+    }
+    instance.removeSource(SOURCE_ID);
+
+    addLayersForLevel(instance, level, parameterIdRef.current);
+    void applyAggregation(instance, parameterIdRef.current, level);
+  }, [level]);
+
+  useEffect(() => {
+    const instance = map.current;
+    // A selection made at a different level than the one currently shown (e.g. switching
+    // level right after selecting) targets a source that no longer exists: skip rather than
+    // outline/zoom against features that aren't on the map anymore.
+    if (
+      instance === null ||
+      instance.getSource(SOURCE_ID) === undefined ||
+      (selectedEntity !== null && selectedEntity.level !== level)
+    ) {
+      return;
+    }
+
     if (selectedId.current !== null) {
       instance.setFeatureState({ source: SOURCE_ID, id: selectedId.current }, { selected: false });
       selectedId.current = null;
     }
 
-    if (selectedCommune === null) {
+    if (selectedEntity === null) {
       return;
     }
 
-    selectedId.current = selectedCommune.code;
-    instance.setFeatureState({ source: SOURCE_ID, id: selectedCommune.code }, { selected: true });
+    selectedId.current = selectedEntity.code;
+    instance.setFeatureState({ source: SOURCE_ID, id: selectedEntity.code }, { selected: true });
 
-    const [minLon, minLat, maxLon, maxLat] = selectedCommune.bbox;
+    const [minLon, minLat, maxLon, maxLat] = selectedEntity.bbox;
+    // Right padding only needs to clear CommunePanel, which only opens for a commune
+    // selection: other levels have no panel yet, so they get a plain, even padding.
+    const padding =
+      selectedEntity.level === "commune"
+        ? { top: 80, bottom: 80, left: 90, right: 600 }
+        : { top: 80, bottom: 80, left: 80, right: 80 };
     instance.fitBounds(
       [
         [minLon, minLat],
         [maxLon, maxLat],
       ],
-      { padding: 80, duration: 800 },
+      { padding, duration: 800 },
     );
-  }, [selectedCommune]);
+  }, [selectedEntity, level]);
 
   return (
     <>
@@ -341,12 +394,20 @@ export function MapView({ parameterId, unit, selectedCommune, onSelectCommune }:
           [`.${POPUP_CLASS} .maplibregl-popup-tip`]: {
             display: "none",
           },
+          ".maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib *": {
+            color: "rgba(0, 0, 0, 0.75) !important",
+          },
         }}
       />
       <Box ref={container} sx={{ position: "absolute", inset: 0 }} />
       {details !== null &&
         createPortal(
-          <MapPopup details={details} classes={PARAMETERS[parameterId].classes} unit={unit} />,
+          <MapPopup
+            details={details}
+            classes={PARAMETERS[parameterId].classes}
+            unit={unit}
+            level={level}
+          />,
           popupContent.current,
         )}
     </>

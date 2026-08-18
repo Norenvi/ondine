@@ -64,6 +64,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--year", type=int, required=True, help="Year of the joined GeoJSON to simplify")
     parser.add_argument(
+        "--level",
+        default="durete",
+        choices=["durete", "epci", "departement", "region"],
+        help="'durete' is the legacy commune+hardness GeoJSON from join_geo.py; the other "
+        "levels are the plain contours from build_admin_geojson.py",
+    )
+    parser.add_argument(
         "--percentage",
         type=float,
         default=DEFAULT_PERCENTAGE,
@@ -77,8 +84,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    input_path = PROCESSED_DIR / f"communes_durete_{args.year}.geojson"
-    output_path = PROCESSED_DIR / f"communes_durete_{args.year}_simplified.geojson"
+    stem = f"communes_durete_{args.year}" if args.level == "durete" else f"{args.level}_{args.year}"
+    input_path = PROCESSED_DIR / f"{stem}.geojson"
+    output_path = PROCESSED_DIR / f"{stem}_simplified.geojson"
 
     simplify_geojson(input_path, output_path, args.percentage, args.precision, args.memory)
 

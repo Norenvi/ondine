@@ -1,0 +1,218 @@
+import { useEffect, useMemo, useState } from "react";
+import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import CloseIcon from "@mui/icons-material/Close";
+import { DataGrid, useGridApiRef, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
+
+import { fetchAggregation, type AggregationOut } from "./api";
+import { departmentFromInseeCode } from "./communes";
+import { loadEntityIndex, type EntitySummary } from "./entities";
+import { formatDate } from "./format";
+import { classifyValue, contrastText, PARAMETERS, type ParameterId } from "./parameters";
+import { convertFromBase, formatValue, type Unit } from "./units";
+
+type LeaderboardProps = {
+  parameterId: ParameterId;
+  unit: Unit;
+  onSelectCommune: (entity: EntitySummary) => void;
+  onClose: () => void;
+};
+
+type Row = AggregationOut & { departement: string };
+
+/**
+ * Every commune ranked by the active parameter, in the same visual language as
+ * CommunePanel but much bigger: this is a browsing tool, not a detail card.
+ */
+export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: LeaderboardProps) {
+  const parameter = PARAMETERS[parameterId];
+  const apiRef = useGridApiRef();
+
+  const [aggregation, setAggregation] = useState<AggregationOut[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [communeIndex, setCommuneIndex] = useState<Map<string, EntitySummary>>(new Map());
+
+  useEffect(() => {
+    loadEntityIndex("commune").then((entities) => {
+      setCommuneIndex(new Map(entities.map((entity) => [entity.code, entity])));
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAggregation(null);
+    setError(null);
+
+    fetchAggregation("commune", parameter.apiCode)
+      .then((result) => {
+        if (!cancelled) {
+          setAggregation(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("Classement indisponible");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [parameter.apiCode]);
+
+  const rows: Row[] = useMemo(
+    () =>
+      (aggregation ?? []).map((entry) => ({
+        ...entry,
+        departement: departmentFromInseeCode(entry.code),
+      })),
+    [aggregation],
+  );
+
+  const columns: GridColDef<Row>[] = useMemo(
+    () => [
+      {
+        field: "rank",
+        headerName: "#",
+        width: 56,
+        sortable: false,
+        filterable: false,
+        renderCell: (params) => {
+          const sortedIds = apiRef.current?.getSortedRowIds() ?? [];
+          const index = sortedIds.indexOf(params.id);
+          return index === -1 ? "?" : index + 1;
+        },
+      },
+      {
+        field: "nom",
+        headerName: "Commune",
+        flex: 1.5,
+      },
+      {
+        field: "departement",
+        headerName: "Dépt.",
+        width: 80,
+      },
+      {
+        field: "valeur_moyenne",
+        headerName: `Valeur (${unit.symbol || parameter.label})`,
+        flex: 1,
+        align: "right",
+        headerAlign: "right",
+        valueFormatter: (value: number) => formatValue(convertFromBase(value, unit), unit),
+      },
+      {
+        field: "classe",
+        headerName: "Classe",
+        flex: 1,
+        sortable: false,
+        renderCell: (params) => {
+          const valueClass = classifyValue(params.row.valeur_moyenne, parameter.classes);
+          return (
+            <Chip
+              size="small"
+              label={valueClass.label}
+              sx={{
+                borderRadius: 0.75,
+                backgroundColor: valueClass.color,
+                color: contrastText(valueClass.color),
+                fontWeight: 300,
+              }}
+            />
+          );
+        },
+      },
+      {
+        field: "nb_mesures",
+        headerName: "Mesures",
+        width: 90,
+        align: "right",
+        headerAlign: "right",
+      },
+      {
+        field: "derniere_mesure",
+        headerName: "Dernière",
+        width: 110,
+        valueFormatter: (value: string) => formatDate(value),
+      },
+    ],
+    [unit, parameter, apiRef],
+  );
+
+  function handleRowClick(params: GridRowParams<Row>) {
+    const commune = communeIndex.get(params.row.code);
+    if (commune !== undefined) {
+      onSelectCommune(commune);
+    }
+  }
+
+  return (
+    <Paper
+      elevation={4}
+      sx={{
+        position: "absolute",
+        top: 16,
+        bottom: 16,
+        right: 56,
+        zIndex: 1,
+        p: 2,
+        width: 800,
+        maxWidth: "calc(100vw - 72px)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <IconButton
+        size="small"
+        onClick={onClose}
+        aria-label="Fermer"
+        sx={{ position: "absolute", top: 8, right: 8 }}
+      >
+        <CloseIcon fontSize="small" />
+      </IconButton>
+      <Typography variant="subtitle1" sx={{ pr: 4 }}>
+        Classement des communes
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {parameter.label}, triées par valeur moyenne
+      </Typography>
+
+      {error !== null && (
+        <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+          {error}
+        </Typography>
+      )}
+
+      {error === null && aggregation === null && (
+        <Stack sx={{ alignItems: "center", py: 4 }}>
+          <CircularProgress size={24} />
+        </Stack>
+      )}
+
+      {aggregation !== null && (
+        <DataGrid
+          apiRef={apiRef}
+          rows={rows}
+          columns={columns}
+          getRowId={(row) => row.code}
+          density="compact"
+          onRowClick={handleRowClick}
+          initialState={{
+            sorting: { sortModel: [{ field: "valeur_moyenne", sort: "asc" }] },
+            pagination: { paginationModel: { pageSize: 100 } },
+          }}
+          pageSizeOptions={[25, 50, 100]}
+          sx={{
+            mt: 1.5,
+            flexGrow: 1,
+            "& .MuiDataGrid-row": { cursor: "pointer" },
+          }}
+        />
+      )}
+    </Paper>
+  );
+}

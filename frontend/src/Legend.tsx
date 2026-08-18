@@ -1,21 +1,17 @@
 import Box from "@mui/material/Box";
-import IconButton from "@mui/material/IconButton";
+import Link from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
-import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutlineOutlined";
 
 import { NO_DATA_COLOR, PARAMETERS, formatRange, type ParameterId } from "./parameters";
-import type { ColorMode } from "./theme";
 import type { UnitId } from "./units";
 
 type LegendProps = {
-  mode: ColorMode;
-  onToggleMode: () => void;
   parameterId: ParameterId;
   unitId: UnitId;
   onUnitChange: (unitId: UnitId) => void;
@@ -52,8 +48,7 @@ function LegendRow({ color, label, range }: SwatchProps) {
 }
 
 /** Legend for the choropleth, so the mapped value is never conveyed by color alone. */
-export function Legend({ mode, onToggleMode, parameterId, unitId, onUnitChange }: LegendProps) {
-  const isDark = mode === "dark";
+export function Legend({ parameterId, unitId, onUnitChange }: LegendProps) {
   const parameter = PARAMETERS[parameterId];
   const unit = parameter.units[unitId] ?? parameter.units[parameter.defaultUnitId];
 
@@ -62,27 +57,47 @@ export function Legend({ mode, onToggleMode, parameterId, unitId, onUnitChange }
       elevation={3}
       sx={{ position: "absolute", bottom: 32, left: 16, zIndex: 1, p: 1.5, minWidth: 250 }}
     >
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{ alignItems: "flex-start", justifyContent: "space-between" }}
-      >
-        <Box>
-          <Typography variant="subtitle2">{parameter.label}</Typography>
+      <Box>
+        <Typography variant="subtitle2">{parameter.label}</Typography>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
           <Typography variant="caption" color="text.secondary">
             en {unit.name}
           </Typography>
-        </Box>
-        <Tooltip title={isDark ? "Passer en mode clair" : "Passer en mode sombre"}>
-          <IconButton size="small" onClick={onToggleMode}>
-            {isDark ? (
-              <LightModeOutlinedIcon fontSize="small" />
-            ) : (
-              <DarkModeOutlinedIcon fontSize="small" />
-            )}
-          </IconButton>
-        </Tooltip>
-      </Stack>
+          <Tooltip
+            arrow
+            placement="top-start"
+            slotProps={{
+              tooltip: {
+                sx: {
+                  backgroundColor: "rgba(20, 20, 20, 0.92)",
+                  color: "#ffffff",
+                  "& .MuiTooltip-arrow": { color: "rgba(20, 20, 20, 0.92)" },
+                },
+              },
+            }}
+            title={
+              <Box sx={{ p: 0.5, maxWidth: 260 }}>
+                <Typography variant="caption" sx={{ display: "block", fontFamily: "monospace" }}>
+                  {parameter.unitsHelp.lines[unit.id]}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block", mt: 1 }}>
+                  Source :{" "}
+                  <Link
+                    href={parameter.unitsHelp.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    color="inherit"
+                  >
+                    {parameter.unitsHelp.sourceLabel}
+                  </Link>
+                </Typography>
+              </Box>
+            }
+          >
+            <HelpOutlineIcon sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }} />
+          </Tooltip>
+        </Stack>
+      </Box>
 
       <Stack spacing={0.25} sx={{ mt: 1 }}>
         {parameter.classes.map((entry, index) => (

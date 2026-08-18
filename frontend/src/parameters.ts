@@ -21,6 +21,13 @@ export type ParameterId =
   | "turbidite"
   | "chlore_libre";
 
+export type UnitsHelp = {
+  /** Keyed by unit id: only the currently selected unit's line is shown in the tooltip. */
+  lines: Record<string, string>;
+  sourceLabel: string;
+  sourceUrl: string;
+};
+
 export type ParameterDef = {
   id: ParameterId;
   /** Matches the backend parametre.code, used in API query params. */
@@ -30,6 +37,7 @@ export type ParameterDef = {
   units: Record<string, Unit>;
   unitOrder: string[];
   defaultUnitId: string;
+  unitsHelp: UnitsHelp;
 };
 
 /**
@@ -164,7 +172,7 @@ const TURBIDITE_UNITS: Record<string, Unit> = {
   nfu: {
     id: "nfu",
     symbol: "NFU",
-    name: "unites nephelometriques de formazine (NFU)",
+    name: "unités néphélométriques de formazine (NFU)",
     fromBaseUnit: 1,
     decimals: 2,
   },
@@ -202,6 +210,16 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: DURETE_UNITS,
     unitOrder: ["f", "ppm", "dH", "mmolL"],
     defaultUnitId: "f",
+    unitsHelp: {
+      lines: {
+        f: "°f (degré français) : unité de référence ici, 1 °f = 10 mg/L de CaCO₃",
+        ppm: "ppm (mg/L CaCO₃) : 1 ppm = 0,1 °f",
+        dH: "°dH (degré allemand) : 1 °dH ≈ 1,7848 °f",
+        mmolL: "mmol/L : 1 mmol/L = 5,6 °f",
+      },
+      sourceLabel: "Wikipédia : Dureté de l'eau",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Duret%C3%A9_de_l%27eau",
+    },
   },
   ph: {
     id: "ph",
@@ -211,6 +229,13 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: PH_UNITS,
     unitOrder: ["ph"],
     defaultUnitId: "ph",
+    unitsHelp: {
+      lines: {
+        ph: "pH = -log₁₀[H⁺], sans unité, échelle de 0 (acide) à 14 (basique), 7 = neutre",
+      },
+      sourceLabel: "Wikipédia : Potentiel hydrogène",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Potentiel_hydrog%C3%A8ne",
+    },
   },
   nitrates: {
     id: "nitrates",
@@ -220,6 +245,13 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: NITRATES_UNITS,
     unitOrder: ["mgL"],
     defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : milligrammes de nitrates (NO₃⁻) par litre d'eau",
+      },
+      sourceLabel: "Wikipédia : Nitrate",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Nitrate",
+    },
   },
   conductivite: {
     id: "conductivite",
@@ -229,6 +261,14 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: CONDUCTIVITE_UNITS,
     unitOrder: ["uScm"],
     defaultUnitId: "uScm",
+    unitsHelp: {
+      lines: {
+        uScm:
+          "µS/cm : microsiemens par centimètre, capacité de l'eau à conduire le courant électrique, liée à sa minéralisation",
+      },
+      sourceLabel: "Wikipédia : Conductivité électrique",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Conductivit%C3%A9_%C3%A9lectrique",
+    },
   },
   turbidite: {
     id: "turbidite",
@@ -238,6 +278,13 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: TURBIDITE_UNITS,
     unitOrder: ["nfu"],
     defaultUnitId: "nfu",
+    unitsHelp: {
+      lines: {
+        nfu: "NFU (unité néphélométrique de formazine) : trouble de l'eau, mesuré par diffusion de la lumière",
+      },
+      sourceLabel: "Wikipédia : Turbidité",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Turbidit%C3%A9",
+    },
   },
   chlore_libre: {
     id: "chlore_libre",
@@ -247,6 +294,13 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: CHLORE_LIBRE_UNITS,
     unitOrder: ["mgL"],
     defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg(Cl₂)/L : milligrammes de chlore libre actif par litre d'eau",
+      },
+      sourceLabel: "Wikipédia : Chlore",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Chlore",
+    },
   },
 };
 

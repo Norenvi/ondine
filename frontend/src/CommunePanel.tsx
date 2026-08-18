@@ -5,16 +5,27 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
+import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import MenuItem from "@mui/material/MenuItem";
 import CloseIcon from "@mui/icons-material/Close";
+import ShowChartIcon from "@mui/icons-material/ShowChart";
+import TableRowsIcon from "@mui/icons-material/TableRows";
+import { LineChart } from "@mui/x-charts/LineChart";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 
 import { fetchCommuneMesures, type MesureOut } from "./api";
 import { communeLabel, type CommuneSummary } from "./communes";
 import { formatDate } from "./format";
 import { classifyValue, contrastText, PARAMETERS, type ParameterId } from "./parameters";
-import { formatValueWithUnit, type Unit } from "./units";
+import { convertFromBase, formatValueWithUnit, type Unit } from "./units";
+
+type ViewMode = "table" | "chart";
+
+const ALL_RESEAUX = "__all__";
 
 type CommunePanelProps = {
   commune: CommuneSummary;
@@ -30,11 +41,14 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
 
   const [mesures, setMesures] = useState<MesureOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>("table");
+  const [reseauFilter, setReseauFilter] = useState<string>(ALL_RESEAUX);
 
   useEffect(() => {
     let cancelled = false;
     setMesures(null);
     setError(null);
+    setReseauFilter(ALL_RESEAUX);
 
     fetchCommuneMesures(code, parameter.apiCode)
       .then((result) => {
@@ -69,6 +83,28 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
   const rows = useMemo(
     () => (mesures ?? []).map((mesure, index) => ({ id: index, ...mesure })),
     [mesures],
+  );
+
+  const reseauOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const mesure of mesures ?? []) {
+      if (mesure.nom_reseau !== null) {
+        names.add(mesure.nom_reseau);
+      }
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [mesures]);
+
+  const chartData = useMemo(
+    () =>
+      (mesures ?? [])
+        .filter((mesure) => reseauFilter === ALL_RESEAUX || mesure.nom_reseau === reseauFilter)
+        .map((mesure) => ({
+          date: new Date(mesure.date_prel),
+          value: convertFromBase(mesure.valeur, unit),
+        }))
+        .sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [mesures, unit, reseauFilter],
   );
 
   const columns: GridColDef<(typeof rows)[number]>[] = useMemo(
@@ -106,8 +142,8 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
         right: 16,
         zIndex: 1,
         p: 2,
-        minWidth: 300,
-        maxWidth: 480,
+        width: 600,
+        maxWidth: "calc(90vw - 32px)",
         maxHeight: "70vh",
         overflowY: "auto",
       }}
@@ -150,7 +186,53 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
 
       <Divider sx={{ my: 1.5 }} />
 
-      <Typography variant="subtitle2">Historique des relevés</Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
+        <Typography variant="subtitle2">
+          Historique des relevés
+          {unit.symbol !== "" && (
+            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+              ({unit.symbol})
+            </Typography>
+          )}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          {view === "chart" && reseauOptions.length > 1 && (
+            <Select
+              size="small"
+              value={reseauFilter}
+              onChange={(event: SelectChangeEvent) => setReseauFilter(event.target.value)}
+              sx={{ fontSize: "0.75rem", "& .MuiSelect-select": { py: 0.25 } }}
+            >
+              <MenuItem value={ALL_RESEAUX} dense>
+                <Typography variant="caption">Tous les réseaux</Typography>
+              </MenuItem>
+              {reseauOptions.map((name) => (
+                <MenuItem key={name} value={name} dense>
+                  <Typography variant="caption">{name}</Typography>
+                </MenuItem>
+              ))}
+            </Select>
+          )}
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={view}
+            onChange={(_event, next: ViewMode | null) => {
+              if (next !== null) {
+                setView(next);
+              }
+            }}
+            aria-label="Affichage"
+          >
+            <ToggleButton value="table" aria-label="Tableau" sx={{ py: 0.25, px: 0.75 }}>
+              <TableRowsIcon fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value="chart" aria-label="Graphique" sx={{ py: 0.25, px: 0.75 }}>
+              <ShowChartIcon fontSize="small" />
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+      </Stack>
       {error !== null && (
         <Typography variant="caption" color="error">
           {error}
@@ -166,7 +248,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
           Aucun releve disponible
         </Typography>
       )}
-      {mesures !== null && mesures.length > 0 && (
+      {mesures !== null && mesures.length > 0 && view === "table" && (
         <Box sx={{ height: 210, mt: 0.5 }}>
           <DataGrid
             rows={rows}
@@ -188,6 +270,30 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
                 fontSize: "0.7rem",
               },
             }}
+          />
+        </Box>
+      )}
+      {mesures !== null && mesures.length > 0 && view === "chart" && (
+        <Box sx={{ height: 210, width: "100%", mt: 0.5 }}>
+          <LineChart
+            dataset={chartData}
+            xAxis={[{ dataKey: "date", scaleType: "time", valueFormatter: (value: Date) => formatDate(value.toISOString()) }]}
+            yAxis={[{ width: 40 }]}
+            series={[
+              {
+                dataKey: "value",
+                showMark: true,
+                curve: "monotoneX",
+                valueFormatter: (value: number | null) =>
+                  value === null
+                    ? ""
+                    : unit.symbol === ""
+                      ? value.toFixed(unit.decimals)
+                      : `${value.toFixed(unit.decimals)} ${unit.symbol}`,
+              },
+            ]}
+            margin={{ left: 8, right: 16, top: 16, bottom: 24 }}
+            grid={{ horizontal: true }}
           />
         </Box>
       )}
