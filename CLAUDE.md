@@ -192,7 +192,7 @@ npm run build
 
 # Docker (stack complete)
 docker compose up -d db backend caddy             # http://localhost:8080
-docker compose --profile tools run --rm pipeline python src/seed_db.py --year 2026
+docker compose --profile tools run --rm pipeline src/seed_db.py --year 2026   # pas de "python" : ENTRYPOINT du Dockerfile pipeline le fournit deja
 ```
 
 ## Pièges connus (déjà rencontrés, ne pas re-déboguer)
@@ -201,6 +201,7 @@ Environnement :
 - WSL2 avec ~7 Go de RAM. `simplify.py` passe un plafond de heap explicite à `mapshaper-xl` (défaut 8 Go = swap garanti ici).
 - Outils installés hors pip/npm : `docker.io`, `docker-compose-v2`, `tippecanoe`, `python3.12-venv`, `python3-pip` (via apt, nécessite le mot de passe utilisateur), `mapshaper` (via npm global), `poetry` (via `pip install --user`, PATH à inclure `~/.local/bin`).
 - Pas de `unzip` ni de `7z` en ligne de commande : utiliser `zipfile` (stdlib) et `py7zr`.
+- **`pipeline/Dockerfile` a `ENTRYPOINT ["python"]`** : `docker compose run --rm pipeline python src/seed_db.py ...` fait donc tourner `python python src/seed_db.py ...` (erreur `python: can't open file '/app/python'`). Ne pas répéter `python` dans la commande, l'ENTRYPOINT le fournit déjà.
 
 Données :
 - Inspecter les gros fichiers sans les charger : `zipfile.namelist()`, `pyogrio.list_layers()` / `read_info()`, `read_dataframe(..., max_features=3)`. Ne jamais lire un CSV/GeoJSON complet pour "voir à quoi il ressemble".

@@ -42,12 +42,15 @@ services:
     restart: unless-stopped
 
   # Pipeline : pas un service permanent, lancer a la demande, ex:
-  #   docker compose run --rm pipeline python src/download.py
+  #   docker compose --profile tools run --rm pipeline src/download.py
+  # Contexte de build = racine du repo (pas ./pipeline) : seed_db.py importe les modeles
+  # ORM depuis backend/src, l'image a donc besoin des deux dossiers cote a cote.
   pipeline:
     build:
-      context: ./pipeline
+      context: .
+      dockerfile: pipeline/Dockerfile
     volumes:
-      - ./pipeline:/app
+      - ./pipeline:/repo/pipeline
     profiles: ["tools"]
 
 volumes:
