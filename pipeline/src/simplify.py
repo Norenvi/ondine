@@ -13,9 +13,10 @@ PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 # Douglas-Peucker on administrative boundaries.
 DEFAULT_PERCENTAGE = 5.0
 
-# Roughly 1 metre at French latitudes. Commune borders do not need more than that
-# on a web map, and rounding coordinates cuts the output size substantially.
-DEFAULT_PRECISION = 0.00001
+# Roughly 11 metres at French latitudes. A choropleth conveys information through
+# fill color, not sub-metre boundary accuracy, and rounding coordinates cuts the
+# output size substantially.
+DEFAULT_PRECISION = 0.0001
 
 # Node heap ceiling for mapshaper-xl. Sized to stay under typical physical RAM.
 DEFAULT_MEMORY = "5gb"
