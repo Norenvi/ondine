@@ -18,15 +18,26 @@ import Typography from "@mui/material/Typography";
 import BiotechIcon from "@mui/icons-material/Biotech";
 import BlurOnIcon from "@mui/icons-material/BlurOn";
 import BoltIcon from "@mui/icons-material/Bolt";
+import BuildIcon from "@mui/icons-material/Build";
 import CoronavirusIcon from "@mui/icons-material/Coronavirus";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
+import FilterVintageIcon from "@mui/icons-material/FilterVintage";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import GrainIcon from "@mui/icons-material/Grain";
 import GrassIcon from "@mui/icons-material/Grass";
+import HexagonIcon from "@mui/icons-material/Hexagon";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import OpacityIcon from "@mui/icons-material/Opacity";
+import RestaurantIcon from "@mui/icons-material/Restaurant";
 import SanitizerIcon from "@mui/icons-material/Sanitizer";
+import ScatterPlotIcon from "@mui/icons-material/ScatterPlot";
 import ScienceIcon from "@mui/icons-material/Science";
 import SearchIcon from "@mui/icons-material/Search";
+import SpaIcon from "@mui/icons-material/Spa";
+import WaterDropIcon from "@mui/icons-material/WaterDrop";
+import WavesIcon from "@mui/icons-material/Waves";
 
 import type { NiveauZoom } from "./api";
 import { communeLabel } from "./communes";
@@ -76,6 +87,17 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   chlore_libre: <SanitizerIcon fontSize="small" />,
   conformite_bacterio: <CoronavirusIcon fontSize="small" />,
   conformite_chimique: <BiotechIcon fontSize="small" />,
+  chlorures: <WavesIcon fontSize="small" />,
+  sulfates: <GrainIcon fontSize="small" />,
+  calcium: <FitnessCenterIcon fontSize="small" />,
+  magnesium: <SpaIcon fontSize="small" />,
+  fer: <BuildIcon fontSize="small" />,
+  aluminium: <Inventory2Icon fontSize="small" />,
+  manganese: <HexagonIcon fontSize="small" />,
+  sodium: <RestaurantIcon fontSize="small" />,
+  potassium: <ScatterPlotIcon fontSize="small" />,
+  fluorures: <WaterDropIcon fontSize="small" />,
+  bore: <FilterVintageIcon fontSize="small" />,
 };
 
 /** App-wide top bar: title on the left, commune search + parameter picker on the right. */

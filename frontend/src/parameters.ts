@@ -21,7 +21,18 @@ export type ParameterId =
   | "turbidite"
   | "chlore_libre"
   | "conformite_bacterio"
-  | "conformite_chimique";
+  | "conformite_chimique"
+  | "chlorures"
+  | "sulfates"
+  | "calcium"
+  | "magnesium"
+  | "fer"
+  | "aluminium"
+  | "manganese"
+  | "sodium"
+  | "potassium"
+  | "fluorures"
+  | "bore";
 
 export type UnitsHelp = {
   /** Keyed by unit id: only the currently selected unit's line is shown in the tooltip. */
@@ -227,6 +238,143 @@ const CONFORMITE_UNITS: Record<string, Unit> = {
   },
 };
 
+/**
+ * Sequential, regulatory-anchored scales for minerals with a French "reference de qualite"
+ * (non-binding, aesthetic/informative) or "limite de qualite" (binding, health-based) value:
+ * bounds are set at 20%/40%/70%/100% of that value, mirroring the nitrates/turbidite pattern,
+ * so "Hors norme" always starts exactly at the regulatory figure.
+ */
+const CHLORURES_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 50, label: "Modérée", color: "#91cf60" },
+  { min: 100, label: "Élevée", color: "#fee08b" },
+  { min: 175, label: "Très élevée", color: "#fc8d59" },
+  { min: 250, label: "Hors norme", color: "#d73027" },
+];
+
+const CHLORURES_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 0 },
+};
+
+/** Same shape and bounds as chlorures: both share the 250 mg/L reference de qualite. */
+const SULFATES_CLASSES: ValueClass[] = CHLORURES_CLASSES;
+const SULFATES_UNITS: Record<string, Unit> = CHLORURES_UNITS;
+
+/**
+ * Informative, not regulatory: calcium has no French drinking-water threshold (it is one of
+ * the two ions durete already sums into a single CaCO3-equivalent number). Bounds are set
+ * from the actual quartile distribution of the 2026 dataset (median ~69 mg/L) rather than an
+ * invented "norm", same spirit as durete's own bounds.
+ */
+const CALCIUM_CLASSES: ValueClass[] = [
+  { min: 0, label: "Très faible", color: "#86b6ef" },
+  { min: 30, label: "Faible", color: "#5598e7" },
+  { min: 70, label: "Moyenne", color: "#2a78d6" },
+  { min: 100, label: "Élevée", color: "#1c5cab" },
+  { min: 130, label: "Très élevée", color: "#0d366b" },
+];
+
+const CALCIUM_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 0 },
+};
+
+/** Informative like calcium: no French threshold. Bounds from the dataset's own quartiles
+ * (median ~5 mg/L), the other half of what durete sums together. */
+const MAGNESIUM_CLASSES: ValueClass[] = [
+  { min: 0, label: "Très faible", color: "#86b6ef" },
+  { min: 3, label: "Faible", color: "#5598e7" },
+  { min: 6, label: "Moyenne", color: "#2a78d6" },
+  { min: 12, label: "Élevée", color: "#1c5cab" },
+  { min: 20, label: "Très élevée", color: "#0d366b" },
+];
+
+const MAGNESIUM_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 1 },
+};
+
+/** Reference de qualite (non-binding) of 200 µg/L, same bound-fraction scheme as chlorures. */
+const FER_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 50, label: "Modérée", color: "#91cf60" },
+  { min: 100, label: "Élevée", color: "#fee08b" },
+  { min: 150, label: "Très élevée", color: "#fc8d59" },
+  { min: 200, label: "Hors norme", color: "#d73027" },
+];
+
+const FER_UNITS: Record<string, Unit> = {
+  ugL: { id: "ugL", symbol: "µg/L", name: "microgrammes par litre (µg/L)", fromBaseUnit: 1, decimals: 0 },
+};
+
+/** Same reference de qualite (200 µg/L) and shape as fer. */
+const ALUMINIUM_CLASSES: ValueClass[] = FER_CLASSES;
+const ALUMINIUM_UNITS: Record<string, Unit> = FER_UNITS;
+
+/** Limite de qualite (binding) of 50 µg/L. */
+const MANGANESE_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 10, label: "Modérée", color: "#91cf60" },
+  { min: 20, label: "Élevée", color: "#fee08b" },
+  { min: 35, label: "Très élevée", color: "#fc8d59" },
+  { min: 50, label: "Hors norme", color: "#d73027" },
+];
+
+const MANGANESE_UNITS: Record<string, Unit> = {
+  ugL: { id: "ugL", symbol: "µg/L", name: "microgrammes par litre (µg/L)", fromBaseUnit: 1, decimals: 0 },
+};
+
+/** Reference de qualite (non-binding) of 200 mg/L. */
+const SODIUM_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 50, label: "Modérée", color: "#91cf60" },
+  { min: 100, label: "Élevée", color: "#fee08b" },
+  { min: 150, label: "Très élevée", color: "#fc8d59" },
+  { min: 200, label: "Hors norme", color: "#d73027" },
+];
+
+const SODIUM_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 0 },
+};
+
+/** Informative like calcium/magnesium: no French threshold, bounds from the dataset's own
+ * quartiles (median ~1.4 mg/L). */
+const POTASSIUM_CLASSES: ValueClass[] = [
+  { min: 0, label: "Très faible", color: "#86b6ef" },
+  { min: 1, label: "Faible", color: "#5598e7" },
+  { min: 2, label: "Moyenne", color: "#2a78d6" },
+  { min: 4, label: "Élevée", color: "#1c5cab" },
+  { min: 6, label: "Très élevée", color: "#0d366b" },
+];
+
+const POTASSIUM_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 2 },
+};
+
+/** Limite de qualite (binding) of 1.5 mg/L. */
+const FLUORURES_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 0.3, label: "Modérée", color: "#91cf60" },
+  { min: 0.7, label: "Élevée", color: "#fee08b" },
+  { min: 1.2, label: "Très élevée", color: "#fc8d59" },
+  { min: 1.5, label: "Hors norme", color: "#d73027" },
+];
+
+const FLUORURES_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 2 },
+};
+
+/** Limite de qualite (binding) of 1 mg/L. */
+const BORE_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 0.2, label: "Modérée", color: "#91cf60" },
+  { min: 0.5, label: "Élevée", color: "#fee08b" },
+  { min: 0.8, label: "Très élevée", color: "#fc8d59" },
+  { min: 1, label: "Hors norme", color: "#d73027" },
+];
+
+const BORE_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 2 },
+};
+
 export const PARAMETERS: Record<ParameterId, ParameterDef> = {
   durete: {
     id: "durete",
@@ -362,6 +510,182 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       sourceUrl: "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis",
     },
   },
+  chlorures: {
+    id: "chlorures",
+    apiCode: "chlorures",
+    label: "Chlorures",
+    classes: CHLORURES_CLASSES,
+    units: CHLORURES_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : référence de qualité (non contraignante) 250 mg/L, goût perceptible au-delà",
+      },
+      sourceLabel: "Wikipédia : Chlorure",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Chlorure",
+    },
+  },
+  sulfates: {
+    id: "sulfates",
+    apiCode: "sulfates",
+    label: "Sulfates",
+    classes: SULFATES_CLASSES,
+    units: SULFATES_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : référence de qualité (non contraignante) 250 mg/L, effet laxatif possible au-delà",
+      },
+      sourceLabel: "Wikipédia : Sulfate",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Sulfate",
+    },
+  },
+  calcium: {
+    id: "calcium",
+    apiCode: "calcium",
+    label: "Calcium",
+    classes: CALCIUM_CLASSES,
+    units: CALCIUM_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : pas de seuil réglementaire, l'un des deux ions qui composent la dureté (avec le magnésium)",
+      },
+      sourceLabel: "Wikipédia : Calcium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Calcium",
+    },
+  },
+  magnesium: {
+    id: "magnesium",
+    apiCode: "magnesium",
+    label: "Magnésium",
+    classes: MAGNESIUM_CLASSES,
+    units: MAGNESIUM_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : pas de seuil réglementaire, l'autre ion qui compose la dureté (avec le calcium)",
+      },
+      sourceLabel: "Wikipédia : Magnésium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Magn%C3%A9sium",
+    },
+  },
+  fer: {
+    id: "fer",
+    apiCode: "fer",
+    label: "Fer",
+    classes: FER_CLASSES,
+    units: FER_UNITS,
+    unitOrder: ["ugL"],
+    defaultUnitId: "ugL",
+    unitsHelp: {
+      lines: {
+        ugL: "µg/L : référence de qualité (non contraignante) 200 µg/L, goût et coloration au-delà",
+      },
+      sourceLabel: "Wikipédia : Fer",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Fer",
+    },
+  },
+  aluminium: {
+    id: "aluminium",
+    apiCode: "aluminium",
+    label: "Aluminium",
+    classes: ALUMINIUM_CLASSES,
+    units: ALUMINIUM_UNITS,
+    unitOrder: ["ugL"],
+    defaultUnitId: "ugL",
+    unitsHelp: {
+      lines: {
+        ugL: "µg/L : référence de qualité (non contraignante) 200 µg/L, résidu du traitement de floculation",
+      },
+      sourceLabel: "Wikipédia : Aluminium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Aluminium",
+    },
+  },
+  manganese: {
+    id: "manganese",
+    apiCode: "manganese",
+    label: "Manganèse",
+    classes: MANGANESE_CLASSES,
+    units: MANGANESE_UNITS,
+    unitOrder: ["ugL"],
+    defaultUnitId: "ugL",
+    unitsHelp: {
+      lines: {
+        ugL: "µg/L : limite de qualité (contraignante) 50 µg/L",
+      },
+      sourceLabel: "Wikipédia : Manganèse",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Mangan%C3%A8se",
+    },
+  },
+  sodium: {
+    id: "sodium",
+    apiCode: "sodium",
+    label: "Sodium",
+    classes: SODIUM_CLASSES,
+    units: SODIUM_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : référence de qualité (non contraignante) 200 mg/L",
+      },
+      sourceLabel: "Wikipédia : Sodium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Sodium",
+    },
+  },
+  potassium: {
+    id: "potassium",
+    apiCode: "potassium",
+    label: "Potassium",
+    classes: POTASSIUM_CLASSES,
+    units: POTASSIUM_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : pas de seuil réglementaire en eau potable",
+      },
+      sourceLabel: "Wikipédia : Potassium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Potassium",
+    },
+  },
+  fluorures: {
+    id: "fluorures",
+    apiCode: "fluorures",
+    label: "Fluorures",
+    classes: FLUORURES_CLASSES,
+    units: FLUORURES_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : limite de qualité (contraignante) 1,5 mg/L",
+      },
+      sourceLabel: "Wikipédia : Fluorure",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Fluorure",
+    },
+  },
+  bore: {
+    id: "bore",
+    apiCode: "bore",
+    label: "Bore",
+    classes: BORE_CLASSES,
+    units: BORE_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : limite de qualité (contraignante) 1 mg/L",
+      },
+      sourceLabel: "Wikipédia : Bore (chimie)",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Bore_(chimie)",
+    },
+  },
 };
 
 export const PARAMETER_ORDER: ParameterId[] = [
@@ -371,6 +695,17 @@ export const PARAMETER_ORDER: ParameterId[] = [
   "conductivite",
   "turbidite",
   "chlore_libre",
+  "chlorures",
+  "sulfates",
+  "calcium",
+  "magnesium",
+  "fer",
+  "aluminium",
+  "manganese",
+  "sodium",
+  "potassium",
+  "fluorures",
+  "bore",
   "conformite_bacterio",
   "conformite_chimique",
 ];

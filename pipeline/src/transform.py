@@ -107,6 +107,13 @@ def remap_commune_codes(df: pd.DataFrame, movements: dict[str, str], column: str
     return df.drop_duplicates(subset=["referenceprel", column])
 
 
+# A handful of rows report a parameter in a different unit than the rest (e.g. 23 out of
+# 26467 Aluminium rows in mg/L instead of µg/L, a lab-reporting quirk, not a code mix-up).
+# Below this share, mismatched-unit rows are dropped rather than failing the whole parameter;
+# a wrong SANDRE code would make the wrong unit the majority, not a fringe below this bound.
+MISMATCHED_UNIT_TOLERANCE = 0.01
+
+
 def filter_parameter(result: pd.DataFrame, cdparametre: str, expected_unit: str) -> pd.DataFrame:
     """Keep only measurements for the given SANDRE parameter code.
 
@@ -117,12 +124,15 @@ def filter_parameter(result: pd.DataFrame, cdparametre: str, expected_unit: str)
     if filtered.empty:
         raise ValueError(f"No measurement found for parameter {cdparametre}")
 
-    units = set(filtered["cdunitereferencesiseeaux"].dropna().unique())
-    if units != {expected_unit}:
+    unit_counts = filtered["cdunitereferencesiseeaux"].value_counts()
+    mismatched_share = 1 - unit_counts.get(expected_unit, 0) / unit_counts.sum()
+    if mismatched_share > MISMATCHED_UNIT_TOLERANCE:
         raise ValueError(
-            f"Unexpected units for parameter {cdparametre}: {sorted(units)}, "
-            f"expected only {expected_unit}"
+            f"Unexpected units for parameter {cdparametre}: {sorted(unit_counts.index)}, "
+            f"expected only {expected_unit} ({mismatched_share:.1%} mismatched, "
+            f"tolerance is {MISMATCHED_UNIT_TOLERANCE:.0%})"
         )
+    filtered = filtered[filtered["cdunitereferencesiseeaux"] == expected_unit]
 
     filtered["valtraduite"] = pd.to_numeric(filtered["valtraduite"], errors="coerce")
     return filtered.dropna(subset=["valtraduite"])

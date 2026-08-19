@@ -42,6 +42,17 @@ PARAMETERS = [
     {"cdparametre_sandre": "1303", "code": "conductivite", "nom": "Conductivite a 25C", "unite": "µS/cm"},
     {"cdparametre_sandre": "1295", "code": "turbidite", "nom": "Turbidite nephelometrique", "unite": "NFU"},
     {"cdparametre_sandre": "1398", "code": "chlore_libre", "nom": "Chlore libre", "unite": "mg(Cl2)/L"},
+    {"cdparametre_sandre": "1337", "code": "chlorures", "nom": "Chlorures", "unite": "mg/L"},
+    {"cdparametre_sandre": "1338", "code": "sulfates", "nom": "Sulfates", "unite": "mg/L"},
+    {"cdparametre_sandre": "1374", "code": "calcium", "nom": "Calcium", "unite": "mg/L"},
+    {"cdparametre_sandre": "1372", "code": "magnesium", "nom": "Magnésium", "unite": "mg(Mg)/L"},
+    {"cdparametre_sandre": "1393", "code": "fer", "nom": "Fer total", "unite": "µg/L"},
+    {"cdparametre_sandre": "1370", "code": "aluminium", "nom": "Aluminium total", "unite": "µg/L"},
+    {"cdparametre_sandre": "1394", "code": "manganese", "nom": "Manganèse total", "unite": "µg/L"},
+    {"cdparametre_sandre": "1375", "code": "sodium", "nom": "Sodium", "unite": "mg/L"},
+    {"cdparametre_sandre": "1367", "code": "potassium", "nom": "Potassium", "unite": "mg/L"},
+    {"cdparametre_sandre": "7073", "code": "fluorures", "nom": "Fluorures", "unite": "mg/L"},
+    {"cdparametre_sandre": "1362", "code": "bore", "nom": "Bore", "unite": "mg/L"},
 ]
 
 # Sample-level conformity, derived from DIS_PLV's plvconformitebacterio/plvconformitechimique
