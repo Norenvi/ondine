@@ -44,6 +44,27 @@ PARAMETERS = [
     {"cdparametre_sandre": "1398", "code": "chlore_libre", "nom": "Chlore libre", "unite": "mg(Cl2)/L"},
 ]
 
+# Sample-level conformity, derived from DIS_PLV's plvconformitebacterio/plvconformitechimique
+# rather than a SANDRE-coded RESULT measurement: no real SANDRE code exists for "was this
+# sampling event compliant", so these use a synthetic cdparametre_sandre and are extracted
+# via transform.build_conformity instead of transform.filter_parameter. AVG over the seeded
+# 0/100 values is exactly the compliance rate, reusing the same aggregation as every other
+# parameter with zero extra backend code (see backend/src/routers/aggregation.py).
+CONFORMITY_PARAMETERS = [
+    {
+        "cdparametre_sandre": "CONF_BACT",
+        "code": "conformite_bacterio",
+        "nom": "Conformité bactériologique",
+        "unite": "%",
+    },
+    {
+        "cdparametre_sandre": "CONF_CHIM",
+        "code": "conformite_chimique",
+        "nom": "Conformité chimique",
+        "unite": "%",
+    },
+]
+
 
 def load_admin_hierarchy(
     gpkg_path: Path,
@@ -123,10 +144,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    parameters = PARAMETERS
+    all_parameters = PARAMETERS + CONFORMITY_PARAMETERS
+    parameters = all_parameters
     if args.parametres is not None:
         wanted = {code.strip() for code in args.parametres.split(",")}
-        parameters = [p for p in PARAMETERS if p["code"] in wanted]
+        parameters = [p for p in all_parameters if p["code"] in wanted]
         missing = wanted - {p["code"] for p in parameters}
         if missing:
             raise ValueError(f"Unknown parameter code(s): {sorted(missing)}")
@@ -149,10 +171,17 @@ def main() -> None:
         current_codes = transform.load_current_commune_codes()
         movements = transform.load_commune_movements(cog_zip_path, current_codes)
 
+    conformity_codes = {p["code"] for p in CONFORMITY_PARAMETERS}
+
     joined_by_parameter = {}
     for param in parameters:
-        filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
-        joined = transform.join_commune(filtered, plv, com_udi)
+        if param["code"] in conformity_codes:
+            flag_column = transform.CONFORMITY_FLAG_COLUMNS[param["code"]]
+            base = transform.build_conformity(plv, flag_column)
+            joined = transform.union_commune_sources(base, com_udi)
+        else:
+            filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
+            joined = transform.join_commune(filtered, plv, com_udi)
         if movements is not None:
             joined = transform.remap_commune_codes(joined, movements, "inseecommune")
         joined_by_parameter[param["code"]] = joined
@@ -175,11 +204,29 @@ def main() -> None:
         for param in parameters:
             joined = joined_by_parameter[param["code"]]
             mesures = joined.rename(
-                columns={"inseecommune": "code_insee", "dateprel": "date_prel", "valtraduite": "valeur"}
+                columns={
+                    "inseecommune": "code_insee",
+                    "dateprel": "date_prel",
+                    "valtraduite": "valeur",
+                    "conclusionprel": "conclusion",
+                }
             )
             mesures["parametre_id"] = parametre_ids[param["code"]]
+            # Only conformity parameters carry a valeur_libelle (see transform.build_conformity):
+            # every other parameter's valeur already reads directly in its own unit.
+            if "valeur_libelle" not in mesures.columns:
+                mesures["valeur_libelle"] = None
             mesures = mesures[
-                ["referenceprel", "parametre_id", "code_insee", "cdreseau", "date_prel", "valeur"]
+                [
+                    "referenceprel",
+                    "parametre_id",
+                    "code_insee",
+                    "cdreseau",
+                    "date_prel",
+                    "valeur",
+                    "conclusion",
+                    "valeur_libelle",
+                ]
             ]
 
             # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see

@@ -39,6 +39,8 @@ def get_commune_mesures(
             Mesure.valeur,
             Mesure.cdreseau,
             Reseau.nom.label("nom_reseau"),
+            Mesure.conclusion,
+            Mesure.valeur_libelle,
         )
         .outerjoin(Reseau, Reseau.cdreseau == Mesure.cdreseau)
         .where(Mesure.code_insee == code_insee, Mesure.parametre_id == parametre.id)

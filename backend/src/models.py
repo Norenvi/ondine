@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy import ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -116,6 +116,15 @@ class Mesure(Base):
     cdreseau: Mapped[str | None] = mapped_column(ForeignKey("reseau.cdreseau"))
     date_prel: Mapped[datetime.date]
     valeur: Mapped[float]
+    # Hub'Eau's own human-readable verdict for the sampling event (conclusionprel), shared by
+    # every parametre measured on that same referenceprel. Nullable: a handful of PLV rows
+    # carry no conclusion text.
+    conclusion: Mapped[str | None] = mapped_column(Text)
+    # Human-readable form of `valeur` for parametres where the number itself is not the
+    # natural reading (conformite_bacterio/chimique: valeur is 0/100 for AVG-based aggregation,
+    # but a single row is really a categorical Hub'Eau flag, C/N/D). NULL for every other
+    # parametre, where `valeur` already reads directly in its unit.
+    valeur_libelle: Mapped[str | None] = mapped_column(Text)
 
     parametre: Mapped[Parametre] = relationship(back_populates="mesures")
     commune: Mapped[Commune] = relationship(back_populates="mesures")

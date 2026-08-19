@@ -19,7 +19,9 @@ export type ParameterId =
   | "nitrates"
   | "conductivite"
   | "turbidite"
-  | "chlore_libre";
+  | "chlore_libre"
+  | "conformite_bacterio"
+  | "conformite_chimique";
 
 export type UnitsHelp = {
   /** Keyed by unit id: only the currently selected unit's line is shown in the tooltip. */
@@ -201,6 +203,30 @@ const CHLORE_LIBRE_UNITS: Record<string, Unit> = {
   },
 };
 
+/**
+ * Sequential, but inverted relative to nitrates/turbidite/chlore_libre: high is good here,
+ * since this is a compliance rate, not a raw measurement. Skewed toward the top rather than
+ * evenly spaced, most communes sit close to 100%, so evenly spaced buckets would leave
+ * almost everything in a single "good" class and fail to separate the ones that don't.
+ */
+const CONFORMITE_CLASSES: ValueClass[] = [
+  { min: 0, label: "Très déficiente", color: "#d73027" },
+  { min: 50, label: "Déficiente", color: "#fc8d59" },
+  { min: 80, label: "Moyenne", color: "#fee08b" },
+  { min: 95, label: "Bonne", color: "#91cf60" },
+  { min: 100, label: "Conforme", color: "#1a9850" },
+];
+
+const CONFORMITE_UNITS: Record<string, Unit> = {
+  pct: {
+    id: "pct",
+    symbol: "%",
+    name: "pourcentage de prélèvements conformes",
+    fromBaseUnit: 1,
+    decimals: 1,
+  },
+};
+
 export const PARAMETERS: Record<ParameterId, ParameterDef> = {
   durete: {
     id: "durete",
@@ -302,6 +328,40 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       sourceUrl: "https://fr.wikipedia.org/wiki/Chlore",
     },
   },
+  conformite_bacterio: {
+    id: "conformite_bacterio",
+    apiCode: "conformite_bacterio",
+    label: "Conformité bactériologique",
+    classes: CONFORMITE_CLASSES,
+    units: CONFORMITE_UNITS,
+    unitOrder: ["pct"],
+    defaultUnitId: "pct",
+    unitsHelp: {
+      lines: {
+        pct:
+          "% de prélèvements conformes sur le volet bactériologique (E. coli, entérocoques, coliformes...). Les prélèvements hors du champ de ce contrôle ne sont pas comptés.",
+      },
+      sourceLabel: "Hub'Eau : qualité de l'eau potable",
+      sourceUrl: "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis",
+    },
+  },
+  conformite_chimique: {
+    id: "conformite_chimique",
+    apiCode: "conformite_chimique",
+    label: "Conformité chimique",
+    classes: CONFORMITE_CLASSES,
+    units: CONFORMITE_UNITS,
+    unitOrder: ["pct"],
+    defaultUnitId: "pct",
+    unitsHelp: {
+      lines: {
+        pct:
+          "% de prélèvements conformes sur le volet chimique (nitrates, pesticides, métaux...). Un dépassement sous tolérance dérogatoire compte comme non conforme. Les prélèvements hors du champ de ce contrôle ne sont pas comptés.",
+      },
+      sourceLabel: "Hub'Eau : qualité de l'eau potable",
+      sourceUrl: "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis",
+    },
+  },
 };
 
 export const PARAMETER_ORDER: ParameterId[] = [
@@ -311,6 +371,8 @@ export const PARAMETER_ORDER: ParameterId[] = [
   "conductivite",
   "turbidite",
   "chlore_libre",
+  "conformite_bacterio",
+  "conformite_chimique",
 ];
 
 /** Communes with no measurement stay visible on the map, in neutral gray. */

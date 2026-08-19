@@ -133,8 +133,10 @@ def filter_hardness(result: pd.DataFrame) -> pd.DataFrame:
     return filter_parameter(result, PARAMETER_CODE_HARDNESS, EXPECTED_UNIT)
 
 
-def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFrame) -> pd.DataFrame:
-    """Join RESULT (hardness) -> PLV (referenceprel) -> COM_UDI (cdreseau) to get the commune code.
+def union_commune_sources(base: pd.DataFrame, com_udi: pd.DataFrame) -> pd.DataFrame:
+    """Recover the commune code for each row of `base` (already carrying referenceprel/cdreseau/
+    dateprel/inseecommuneprinc/valtraduite/conclusionprel), via COM_UDI and via PLV's own
+    inseecommuneprinc.
 
     COM_UDI does not always declare every commune a shared network covers: a network named
     e.g. "LEDENON-SERNHAC" can be filed under Ledenon only, even though individual PLV rows
@@ -142,12 +144,6 @@ def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFram
     sources are unioned (deduplicated per referenceprel/commune pair) rather than picking one,
     so a commune stays covered whichever source happens to declare it.
     """
-    base = hardness.merge(
-        plv[["referenceprel", "cdreseau", "dateprel", "inseecommuneprinc"]],
-        on="referenceprel",
-        how="inner",
-    )
-
     via_com_udi = base.merge(
         com_udi[["cdreseau", "inseecommune"]],
         on="cdreseau",
@@ -160,6 +156,60 @@ def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFram
     joined = pd.concat([via_com_udi, via_plv_princ], ignore_index=True)
     joined = joined.drop_duplicates(subset=["referenceprel", "inseecommune"])
     return joined
+
+
+def join_commune(hardness: pd.DataFrame, plv: pd.DataFrame, com_udi: pd.DataFrame) -> pd.DataFrame:
+    """Join RESULT (hardness) -> PLV (referenceprel) -> COM_UDI (cdreseau) to get the commune code."""
+    base = hardness.merge(
+        plv[["referenceprel", "cdreseau", "dateprel", "inseecommuneprinc", "conclusionprel"]],
+        on="referenceprel",
+        how="inner",
+    )
+    return union_commune_sources(base, com_udi)
+
+
+# Sample-level conformity flag columns in DIS_PLV: C = conforme, N = non-conforme,
+# D = hors limite reglementaire mais sous tolerance derogatoire (l'eau reste consommable),
+# S = sans objet (aucun parametre du domaine concerne sur ce prelevement, pas un jugement).
+CONFORMITY_FLAG_COLUMNS = {
+    "conformite_bacterio": "plvconformitebacterio",
+    "conformite_chimique": "plvconformitechimique",
+}
+
+
+CONFORMITY_LABELS = {
+    "C": "Conforme",
+    "N": "Non conforme",
+    "D": "Dérogation (hors limite réglementaire, eau consommable)",
+}
+
+
+def build_conformity(plv: pd.DataFrame, flag_column: str) -> pd.DataFrame:
+    """Turn a PLV conformity flag into a 0/100 measurement per sampling event.
+
+    D (out of the binding limit but under a legal tolerance, water still declared drinkable)
+    counts as non-compliant: the score is meant to answer "clean on every measured parameter",
+    not "still safe to drink". S (not applicable) is dropped rather than counted either way,
+    since it means the domain was not assessed on that sample, not that it passed.
+
+    valtraduite (0/100) drives the AVG-based aggregation like every other parameter, but a
+    single row is really a categorical flag, not a measurement: valeur_libelle carries the
+    original C/N/D reading through for display, since "100%"/"0%" on one relevé reads oddly.
+    """
+    base = plv[plv[flag_column] != "S"].copy()
+    base["valtraduite"] = (base[flag_column] == "C").astype(float) * 100.0
+    base["valeur_libelle"] = base[flag_column].map(CONFORMITY_LABELS)
+    return base[
+        [
+            "referenceprel",
+            "cdreseau",
+            "dateprel",
+            "inseecommuneprinc",
+            "conclusionprel",
+            "valtraduite",
+            "valeur_libelle",
+        ]
+    ]
 
 
 def aggregate_by_commune(joined: pd.DataFrame) -> pd.DataFrame:

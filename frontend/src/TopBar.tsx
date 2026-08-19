@@ -15,8 +15,10 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Toolbar from "@mui/material/Toolbar";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import BiotechIcon from "@mui/icons-material/Biotech";
 import BlurOnIcon from "@mui/icons-material/BlurOn";
 import BoltIcon from "@mui/icons-material/Bolt";
+import CoronavirusIcon from "@mui/icons-material/Coronavirus";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import GrassIcon from "@mui/icons-material/Grass";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
@@ -72,6 +74,8 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   conductivite: <BoltIcon fontSize="small" />,
   turbidite: <BlurOnIcon fontSize="small" />,
   chlore_libre: <SanitizerIcon fontSize="small" />,
+  conformite_bacterio: <CoronavirusIcon fontSize="small" />,
+  conformite_chimique: <BiotechIcon fontSize="small" />,
 };
 
 /** App-wide top bar: title on the left, commune search + parameter picker on the right. */

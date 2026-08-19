@@ -9,13 +9,14 @@ import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import MenuItem from "@mui/material/MenuItem";
 import CloseIcon from "@mui/icons-material/Close";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import TableRowsIcon from "@mui/icons-material/TableRows";
 import { LineChart } from "@mui/x-charts/LineChart";
-import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import { DataGrid, type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 
 import { fetchCommuneMesures, type MesureOut } from "./api";
 import { communeLabel, type CommuneSummary } from "./communes";
@@ -43,6 +44,9 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("table");
   const [reseauFilter, setReseauFilter] = useState<string>(ALL_RESEAUX);
+  const [compliance, setCompliance] = useState<{ bacterio: number | null; chimique: number | null } | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +62,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Releves indisponibles");
+          setError("Relevés indisponibles");
         }
       });
 
@@ -66,6 +70,36 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
       cancelled = true;
     };
   }, [code, parameter.apiCode]);
+
+  // Fetched independently of the active parameter (not derived from `mesures` above): a
+  // resident cares about both compliance rates at once, since they cover distinct failure
+  // modes (bacteriological vs chemical, see CLAUDE.md), not just whichever is on the map.
+  useEffect(() => {
+    let cancelled = false;
+    setCompliance(null);
+
+    const meanValeur = (rows: MesureOut[]) =>
+      rows.length === 0 ? null : rows.reduce((sum, m) => sum + m.valeur, 0) / rows.length;
+
+    Promise.all([
+      fetchCommuneMesures(code, "conformite_bacterio"),
+      fetchCommuneMesures(code, "conformite_chimique"),
+    ])
+      .then(([bacterio, chimique]) => {
+        if (!cancelled) {
+          setCompliance({ bacterio: meanValeur(bacterio), chimique: meanValeur(chimique) });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCompliance({ bacterio: null, chimique: null });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
 
   // Derived from the same measurements the table below shows, rather than a second API
   // call: mean/count/latest generalize to any parameter without backend involvement.
@@ -121,13 +155,39 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
         flex: 1,
         align: "right",
         headerAlign: "right",
-        valueFormatter: (value: number) => formatValueWithUnit(value, unit),
+        // valeur_libelle overrides the raw number for categorical parameters (conformity: a
+        // relevé is really a C/N/D flag, not a percentage, "100%"/"0%" alone would mislead).
+        renderCell: (params: GridRenderCellParams<(typeof rows)[number], number>) =>
+          params.row.valeur_libelle ?? formatValueWithUnit(params.value ?? 0, unit),
       },
       {
         field: "nom_reseau",
         headerName: "Réseau",
         flex: 1.5,
         valueFormatter: (value: string | null) => value ?? "?",
+      },
+      {
+        field: "conclusion",
+        headerName: "Conclusion",
+        flex: 3,
+        sortable: false,
+        renderCell: (params: GridRenderCellParams<(typeof rows)[number], string | null>) =>
+          params.value === null || params.value === undefined ? (
+            "?"
+          ) : (
+            <Tooltip title={params.value}>
+              <Box
+                sx={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  width: "100%",
+                }}
+              >
+                {params.value}
+              </Box>
+            </Tooltip>
+          ),
       },
     ],
     [unit],
@@ -182,6 +242,33 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
             {summary.count} mesure(s), dernière le {formatDate(summary.latest)}
           </Typography>
         </Box>
+      )}
+
+      {compliance !== null && (compliance.bacterio !== null || compliance.chimique !== null) && (
+        <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
+          {([
+            ["bacterio", "conformite_bacterio", "Bactério", compliance.bacterio],
+            ["chimique", "conformite_chimique", "Chimique", compliance.chimique],
+          ] as const).map(([key, paramId, label, value]) => {
+            if (value === null) {
+              return null;
+            }
+            const cls = classifyValue(value, PARAMETERS[paramId].classes);
+            return (
+              <Chip
+                key={key}
+                size="small"
+                label={`${label} : ${value.toFixed(0)}% conforme`}
+                sx={{
+                  borderRadius: 0.75,
+                  backgroundColor: cls.color,
+                  color: contrastText(cls.color),
+                  fontWeight: 300,
+                }}
+              />
+            );
+          })}
+        </Stack>
       )}
 
       <Divider sx={{ my: 1.5 }} />
@@ -245,7 +332,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
       )}
       {mesures !== null && mesures.length === 0 && (
         <Typography variant="caption" color="text.secondary">
-          Aucun releve disponible
+          Aucun relevé disponible
         </Typography>
       )}
       {mesures !== null && mesures.length > 0 && view === "table" && (

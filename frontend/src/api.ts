@@ -12,6 +12,8 @@ export type MesureOut = {
   valeur: number;
   cdreseau: string | null;
   nom_reseau: string | null;
+  conclusion: string | null;
+  valeur_libelle: string | null;
 };
 
 export type AggregationOut = {
