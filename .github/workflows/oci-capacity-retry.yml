@@ -1,8 +1,6 @@
 name: OCI A1.Flex capacity retry
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 env:
