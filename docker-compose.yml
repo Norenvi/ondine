@@ -49,8 +49,13 @@ services:
     build:
       context: .
       dockerfile: pipeline/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://ondine:ondine@db:5432/ondine
     volumes:
       - ./pipeline:/repo/pipeline
+    depends_on:
+      db:
+        condition: service_healthy
     profiles: ["tools"]
 
 volumes:
