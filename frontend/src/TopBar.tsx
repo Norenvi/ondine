@@ -6,6 +6,7 @@ import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
@@ -15,9 +16,9 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Toolbar from "@mui/material/Toolbar";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import BiotechIcon from "@mui/icons-material/Biotech";
 import BlurOnIcon from "@mui/icons-material/BlurOn";
 import BoltIcon from "@mui/icons-material/Bolt";
+import BubbleChartIcon from "@mui/icons-material/BubbleChart";
 import BuildIcon from "@mui/icons-material/Build";
 import CoronavirusIcon from "@mui/icons-material/Coronavirus";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
@@ -25,17 +26,22 @@ import FilterVintageIcon from "@mui/icons-material/FilterVintage";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import GrainIcon from "@mui/icons-material/Grain";
 import GrassIcon from "@mui/icons-material/Grass";
+import HardwareIcon from "@mui/icons-material/Hardware";
 import HexagonIcon from "@mui/icons-material/Hexagon";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import OpacityIcon from "@mui/icons-material/Opacity";
+import PestControlIcon from "@mui/icons-material/PestControl";
+import PlumbingIcon from "@mui/icons-material/Plumbing";
+import RecyclingIcon from "@mui/icons-material/Recycling";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import SanitizerIcon from "@mui/icons-material/Sanitizer";
 import ScatterPlotIcon from "@mui/icons-material/ScatterPlot";
 import ScienceIcon from "@mui/icons-material/Science";
 import SearchIcon from "@mui/icons-material/Search";
 import SpaIcon from "@mui/icons-material/Spa";
+import TerrainIcon from "@mui/icons-material/Terrain";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
 import WavesIcon from "@mui/icons-material/Waves";
 
@@ -43,7 +49,7 @@ import type { NiveauZoom } from "./api";
 import { communeLabel } from "./communes";
 import { loadEntityIndex, type EntitySummary } from "./entities";
 import { LEVEL_CONFIG, LEVEL_ORDER } from "./levels";
-import { PARAMETERS, PARAMETER_ORDER, type ParameterId } from "./parameters";
+import { PARAMETERS, PARAMETER_GROUPS, type ParameterId } from "./parameters";
 import type { ColorMode } from "./theme";
 
 type TopBarProps = {
@@ -85,8 +91,7 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   conductivite: <BoltIcon fontSize="small" />,
   turbidite: <BlurOnIcon fontSize="small" />,
   chlore_libre: <SanitizerIcon fontSize="small" />,
-  conformite_bacterio: <CoronavirusIcon fontSize="small" />,
-  conformite_chimique: <BiotechIcon fontSize="small" />,
+  ecoli: <CoronavirusIcon fontSize="small" />,
   chlorures: <WavesIcon fontSize="small" />,
   sulfates: <GrainIcon fontSize="small" />,
   calcium: <FitnessCenterIcon fontSize="small" />,
@@ -98,6 +103,12 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   potassium: <ScatterPlotIcon fontSize="small" />,
   fluorures: <WaterDropIcon fontSize="small" />,
   bore: <FilterVintageIcon fontSize="small" />,
+  plomb: <PlumbingIcon fontSize="small" />,
+  cuivre: <HardwareIcon fontSize="small" />,
+  arsenic: <TerrainIcon fontSize="small" />,
+  bisphenol_a: <RecyclingIcon fontSize="small" />,
+  thm: <BubbleChartIcon fontSize="small" />,
+  pesticides: <PestControlIcon fontSize="small" />,
 };
 
 /** App-wide top bar: title on the left, commune search + parameter picker on the right. */
@@ -229,14 +240,17 @@ export function TopBar({
               "& .MuiSelect-select": { py: 0.75, display: "flex", alignItems: "center" },
             }}
           >
-            {PARAMETER_ORDER.map((id) => (
-              <MenuItem key={id} value={id} dense>
-                <ListItemIcon sx={{ minWidth: 32 }}>{PARAMETER_ICONS[id]}</ListItemIcon>
-                <ListItemText slotProps={{ primary: { variant: "body2" } }}>
-                  {PARAMETERS[id].label}
-                </ListItemText>
-              </MenuItem>
-            ))}
+            {PARAMETER_GROUPS.flatMap((group) => [
+              <ListSubheader key={`group-${group.label}`}>{group.label}</ListSubheader>,
+              ...group.ids.map((id) => (
+                <MenuItem key={id} value={id} dense>
+                  <ListItemIcon sx={{ minWidth: 32 }}>{PARAMETER_ICONS[id]}</ListItemIcon>
+                  <ListItemText slotProps={{ primary: { variant: "body2" } }}>
+                    {PARAMETERS[id].label}
+                  </ListItemText>
+                </MenuItem>
+              )),
+            ])}
           </Select>
           <Tooltip title="Classement des communes">
             <IconButton size="small" onClick={onOpenLeaderboard}>

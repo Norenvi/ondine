@@ -51,3 +51,20 @@ export async function fetchAggregation(
   }
   return response.json() as Promise<AggregationOut[]>;
 }
+
+/** Per-commune breakdown of one EPCI/departement/region (see ZonePanel): the detail view for
+ * zoom levels above commune, one row per commune inside the zone rather than a raw per-sample
+ * table (which would run into tens of thousands of rows at region scale). */
+export async function fetchZoneCommunes(
+  niveau: Exclude<NiveauZoom, "commune">,
+  code: string,
+  parametre: string,
+): Promise<AggregationOut[]> {
+  const response = await fetch(
+    `${API_BASE}/aggregation/${niveau}/${code}/communes?parametre=${parametre}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Echec du chargement des communes (${response.status})`);
+  }
+  return response.json() as Promise<AggregationOut[]>;
+}

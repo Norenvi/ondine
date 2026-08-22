@@ -358,12 +358,12 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
     instance.setFeatureState({ source: SOURCE_ID, id: selectedEntity.code }, { selected: true });
 
     const [minLon, minLat, maxLon, maxLat] = selectedEntity.bbox;
-    // Right padding only needs to clear CommunePanel, which only opens for a commune
-    // selection: other levels have no panel yet, so they get a plain, even padding.
+    // Right padding clears whichever detail panel App.tsx renders for this selection:
+    // CommunePanel (600 wide) for a commune, ZonePanel (800 wide) for anything else.
     const padding =
       selectedEntity.level === "commune"
         ? { top: 80, bottom: 80, left: 90, right: 600 }
-        : { top: 80, bottom: 80, left: 80, right: 80 };
+        : { top: 80, bottom: 80, left: 80, right: 800 };
     instance.fitBounds(
       [
         [minLon, minLat],

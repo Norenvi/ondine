@@ -53,26 +53,22 @@ PARAMETERS = [
     {"cdparametre_sandre": "1367", "code": "potassium", "nom": "Potassium", "unite": "mg/L"},
     {"cdparametre_sandre": "7073", "code": "fluorures", "nom": "Fluorures", "unite": "mg/L"},
     {"cdparametre_sandre": "1362", "code": "bore", "nom": "Bore", "unite": "mg/L"},
-]
-
-# Sample-level conformity, derived from DIS_PLV's plvconformitebacterio/plvconformitechimique
-# rather than a SANDRE-coded RESULT measurement: no real SANDRE code exists for "was this
-# sampling event compliant", so these use a synthetic cdparametre_sandre and are extracted
-# via transform.build_conformity instead of transform.filter_parameter. AVG over the seeded
-# 0/100 values is exactly the compliance rate, reusing the same aggregation as every other
-# parameter with zero extra backend code (see backend/src/routers/aggregation.py).
-CONFORMITY_PARAMETERS = [
+    {"cdparametre_sandre": "1449", "code": "ecoli", "nom": "Escherichia coli", "unite": "n/(100mL)"},
+    {"cdparametre_sandre": "1382", "code": "plomb", "nom": "Plomb", "unite": "µg/L"},
+    {"cdparametre_sandre": "1392", "code": "cuivre", "nom": "Cuivre", "unite": "mg(Cu)/L"},
+    {"cdparametre_sandre": "1369", "code": "arsenic", "nom": "Arsenic", "unite": "µg/L"},
+    {"cdparametre_sandre": "2766", "code": "bisphenol_a", "nom": "Bisphénol A", "unite": "µg/L"},
     {
-        "cdparametre_sandre": "CONF_BACT",
-        "code": "conformite_bacterio",
-        "nom": "Conformité bactériologique",
-        "unite": "%",
+        "cdparametre_sandre": "2036",
+        "code": "thm",
+        "nom": "Trihalométhanes (4 substances)",
+        "unite": "µg/L",
     },
     {
-        "cdparametre_sandre": "CONF_CHIM",
-        "code": "conformite_chimique",
-        "nom": "Conformité chimique",
-        "unite": "%",
+        "cdparametre_sandre": "6276",
+        "code": "pesticides",
+        "nom": "Total des pesticides analysés",
+        "unite": "µg/L",
     },
 ]
 
@@ -155,7 +151,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    all_parameters = PARAMETERS + CONFORMITY_PARAMETERS
+    all_parameters = PARAMETERS
     parameters = all_parameters
     if args.parametres is not None:
         wanted = {code.strip() for code in args.parametres.split(",")}
@@ -182,17 +178,10 @@ def main() -> None:
         current_codes = transform.load_current_commune_codes()
         movements = transform.load_commune_movements(cog_zip_path, current_codes)
 
-    conformity_codes = {p["code"] for p in CONFORMITY_PARAMETERS}
-
     joined_by_parameter = {}
     for param in parameters:
-        if param["code"] in conformity_codes:
-            flag_column = transform.CONFORMITY_FLAG_COLUMNS[param["code"]]
-            base = transform.build_conformity(plv, flag_column)
-            joined = transform.union_commune_sources(base, com_udi)
-        else:
-            filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
-            joined = transform.join_commune(filtered, plv, com_udi)
+        filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
+        joined = transform.join_commune(filtered, plv, com_udi)
         if movements is not None:
             joined = transform.remap_commune_codes(joined, movements, "inseecommune")
         joined_by_parameter[param["code"]] = joined
@@ -223,10 +212,7 @@ def main() -> None:
                 }
             )
             mesures["parametre_id"] = parametre_ids[param["code"]]
-            # Only conformity parameters carry a valeur_libelle (see transform.build_conformity):
-            # every other parameter's valeur already reads directly in its own unit.
-            if "valeur_libelle" not in mesures.columns:
-                mesures["valeur_libelle"] = None
+            mesures["valeur_libelle"] = None
             mesures = mesures[
                 [
                     "referenceprel",

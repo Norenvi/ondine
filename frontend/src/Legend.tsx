@@ -58,7 +58,12 @@ export function Legend({ parameterId, unitId, onUnitChange }: LegendProps) {
       sx={{ position: "absolute", bottom: 32, left: 16, zIndex: 1, p: 1.5, minWidth: 250 }}
     >
       <Box>
-        <Typography variant="subtitle2">{parameter.label}</Typography>
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: "baseline" }}>
+          <Typography variant="subtitle2">{parameter.label}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+            (SANDRE {parameter.sandreCode})
+          </Typography>
+        </Stack>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
           <Typography variant="caption" color="text.secondary">
             en {unit.name}

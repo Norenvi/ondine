@@ -120,10 +120,10 @@ class Mesure(Base):
     # every parametre measured on that same referenceprel. Nullable: a handful of PLV rows
     # carry no conclusion text.
     conclusion: Mapped[str | None] = mapped_column(Text)
-    # Human-readable form of `valeur` for parametres where the number itself is not the
-    # natural reading (conformite_bacterio/chimique: valeur is 0/100 for AVG-based aggregation,
-    # but a single row is really a categorical Hub'Eau flag, C/N/D). NULL for every other
-    # parametre, where `valeur` already reads directly in its unit.
+    # Human-readable form of `valeur`, for a future parametre where the number itself would
+    # not be the natural reading (a categorical Hub'Eau flag rather than a measurement).
+    # NULL for every parametre currently seeded, where `valeur` already reads directly in
+    # its unit.
     valeur_libelle: Mapped[str | None] = mapped_column(Text)
 
     parametre: Mapped[Parametre] = relationship(back_populates="mesures")

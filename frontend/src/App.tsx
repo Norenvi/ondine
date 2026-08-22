@@ -13,6 +13,7 @@ import { PARAMETERS, type ParameterId } from "./parameters";
 import { TopBar } from "./TopBar";
 import { useColorMode } from "./theme";
 import type { UnitId } from "./units";
+import { ZonePanel } from "./ZonePanel";
 
 const DEFAULT_PARAMETER_ID: ParameterId = "durete";
 
@@ -27,6 +28,15 @@ function App() {
   function handleSelectEntity(entity: EntitySummary) {
     setLeaderboardOpen(false);
     setSelectedEntity(entity);
+  }
+
+  // Drilling into a commune from ZonePanel crosses levels (e.g. clicking a commune row while
+  // viewing a departement), unlike search/map-click selection which is always scoped to the
+  // level already on screen: switch level too, so the map/legend follow the panel instead of
+  // showing a commune detail over departement-level tiles.
+  function handleDrillIntoCommune(entity: EntitySummary) {
+    setLevel("commune");
+    handleSelectEntity(entity);
   }
 
   function handleOpenLeaderboard() {
@@ -69,6 +79,15 @@ function App() {
               commune={selectedEntity}
               parameterId={parameterId}
               unit={unit}
+              onClose={() => setSelectedEntity(null)}
+            />
+          )}
+          {selectedEntity !== null && selectedEntity.level !== "commune" && (
+            <ZonePanel
+              entity={selectedEntity}
+              parameterId={parameterId}
+              unit={unit}
+              onSelectCommune={handleDrillIntoCommune}
               onClose={() => setSelectedEntity(null)}
             />
           )}

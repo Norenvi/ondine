@@ -195,6 +195,43 @@ docker compose up -d db backend caddy             # http://localhost:8080
 docker compose --profile tools run --rm pipeline src/seed_db.py --year 2026   # pas de "python" : ENTRYPOINT du Dockerfile pipeline le fournit deja
 ```
 
+## Déploiement sur la VM Oracle (ondine-vm)
+
+Une instance Oracle Cloud (`VM.Standard.A1.Flex`, 2 OCPU/12 Go, Ubuntu, région `eu-marseille-1`) héberge une copie de la stack complète, créée via le workflow GitHub Actions `.github/workflows/oci-capacity-retry.yml` (déclenché manuellement désormais, le `schedule` cron a été retiré une fois l'instance obtenue : OCI Free Tier a régulièrement une pénurie de capacité A1.Flex, d'où le pattern retry).
+
+- Accès SSH : alias `ondine` dans `~/.ssh/config` (`Host ondine`, `HostName <ip publique>`, `User ubuntu`, `IdentityFile ~/.ssh/id_ed25519`). `ssh ondine` suffit.
+- La stack tourne dans `~/ondine` sur la VM, lancée avec `docker compose up -d db backend caddy` comme en local. Caddy écoute sur le port hôte **8080** (pas 80), convention reprise de l'usage local.
+- Deux couches de pare-feu à ouvrir pour un port publiquement accessible, **les deux sont nécessaires** :
+  1. iptables sur la VM elle-même (images Ubuntu Oracle avec un jeu de règles restrictif par défaut, `FORWARD` en `DROP` par défaut pour le trafic Docker-NAT). Insérer la règle ACCEPT **avant** la règle `REJECT` catch-all (repérer son numéro de ligne avec `sudo iptables -L INPUT -n --line-numbers`, insérer juste avant), puis `sudo netfilter-persistent save` pour la rendre persistante au reboot.
+  2. La security list OCI (niveau cloud, en amont d'iptables) : n'autorise par défaut que 22/80/443 en ingress. Ajouter une règle TCP pour le port utilisé (8080 ici) via la console (Networking > VCN > Security Lists > Add Ingress Rules) ou `oci network security-list update --security-list-id <id> --ingress-security-rules '[...]'`. **Modifier une security list est une action infra partagée, sensible : demander confirmation avant de le faire par CLI, la console est plus sûre et plus transparente pour l'utilisateur.**
+- Le repo étant privé, cloner sur la VM nécessite une **deploy key** générée sur place (`ssh-keygen` sur la VM, clé publique ajoutée dans GitHub Settings > Deploy keys, lecture seule) plutôt que copier une clé personnelle sur la VM ou utiliser un PAT large.
+- Le GeoJSON (`frontend/public/data/communes_durete.geojson`) est gitignored : le copier séparément sur la VM (`scp`) avant le build du frontend, sinon la carte n'a pas de géométrie.
+
+### Seeder la base Postgres de la VM (depuis le poste local, sans copier les données brutes sur la VM)
+
+Les données brutes (`pipeline/data/raw/`, ~1 Go) restent en local. Plutôt que de les transférer sur la VM pour y lancer le pipeline, on tunnelise le port Postgres de la VM et on lance `seed_db.py` localement contre ce tunnel :
+
+```bash
+# 1. tunnel SSH vers le Postgres de la VM (port local 5433 -> port distant 5432)
+ssh -f -N -L 5433:localhost:5432 ondine
+
+# 2. seed depuis le pipeline local, DATABASE_URL pointe sur le tunnel
+cd pipeline
+DATABASE_URL=postgresql+psycopg://ondine:ondine@localhost:5433/ondine .venv/bin/python src/seed_db.py --year 2026
+
+# 3. fermer le tunnel une fois termine
+pkill -f "ssh -f -N -L 5433:localhost:5432 ondine"
+```
+
+`seed_db.py` est idempotent (TRUNCATE + reload), donc relancer la commande en cas de problème ne duplique rien. Le job traite ~2,7M lignes (6 paramètres) et prend plusieurs minutes : le lancer en arrière-plan plutôt que d'attendre en bloquant le terminal.
+
+Vérifier après coup que la base a bien des données (pas juste le schéma migré à vide) :
+```bash
+ssh ondine "curl -s http://localhost:8080/api/parametres"                                    # doit lister les parametres, pas []
+ssh ondine "curl -s 'http://localhost:8080/api/aggregation/commune?parametre=durete'" | head  # doit renvoyer des lignes, pas 404 "Parametre inconnu"
+```
+Un `/parametres` vide ou un 404 `Parametre inconnu` sur `/aggregation` signifie une base migrée (schéma Alembic à jour) mais jamais seedée, c'est le symptôme observé côté frontend sous la forme `Erreur : Echec du chargement de l'agregation (404)`.
+
 ## Pièges connus (déjà rencontrés, ne pas re-déboguer)
 
 Environnement :
