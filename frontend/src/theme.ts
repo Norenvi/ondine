@@ -33,7 +33,26 @@ export function useColorMode(): { mode: ColorMode; theme: Theme; toggleMode: () 
     setOverride(next);
   }, [mode]);
 
-  const theme = useMemo(() => createTheme({ palette: { mode } }), [mode]);
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: { mode },
+        typography: {
+          fontFamily: [
+            '"Inter Variable"',
+            '"Inter"',
+            '-apple-system',
+            "BlinkMacSystemFont",
+            '"Segoe UI"',
+            "Roboto",
+            '"Helvetica Neue"',
+            "Arial",
+            "sans-serif",
+          ].join(","),
+        },
+      }),
+    [mode],
+  );
 
   return { mode, theme, toggleMode };
 }
