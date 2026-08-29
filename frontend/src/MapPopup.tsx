@@ -79,7 +79,6 @@ export function MapPopup({ details, classes, unit, level, onClose }: MapPopupPro
                 backgroundColor: valueClass.color,
                 color: contrastText(valueClass.color),
                 fontSize: 11,
-                fontWeight: 300,
               }}
             />
           </Stack>

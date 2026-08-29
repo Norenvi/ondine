@@ -164,6 +164,16 @@ Deux difficultés avant de s'y lancer, pas juste un choix d'implémentation :
 
 Piste de mise en oeuvre si retenu : convertir chaque valeur en index de classe (`classifyValue`, déjà utilisé pour la couleur choropleth) plutôt qu'en score brut, ça évite d'avoir à normaliser des unités hétérogènes (°f, mg/L, µS/cm, NFU) et donne directement une échelle commune (0 = meilleure classe, 4 = pire) à moyenner ou sommer.
 
+**Pass de refonte visuelle "premium" (en cours, par sections).** Objectif : sortir l'app du rendu "MUI par défaut + MapLibre par défaut". Sections déjà faites : (1) couleurs et thème (palette teal custom, neutres teintés, échelle d'ombres douce, bordures hairline, tokens de rayon/typo dans `theme.ts`), (3) typographie (Inter auto-hébergé via `@fontsource-variable/inter`, échelle typo explicite, chiffres tabulaires globaux, ripple désactivé globalement), (4) layout/espacement (`PanelStates.tsx` avec `PanelSkeleton`/`EmptyState`, skeletons au lieu de spinners, en-tête collant dans `CommunePanel`). Sections restantes non faites :
+
+- **Section 2, la carte elle-même** (plus grosse surface visuelle encore "par défaut") :
+  - Fond de carte tamisé : forker le style JSON Etalab/OpenMapTiles et atténuer les couches routes/labels (moins de bruit, terres/eau désaturées) pour faire ressortir le choropleth. Ne PAS basculer sur IGN (friction clés Géoportail, déjà tranché).
+  - Auditer et lisser les rampes de couleur dans `parameters.ts` contre une référence perceptuellement uniforme (ColorBrewer/CARTO/viridis) : garder séquentiel pour dureté/nitrates, divergent pour pH (voir "Points d'attention métier").
+  - Survol/sélection : liseré blanc + halo léger, transition animée `fill-color-transition`, easing sur le `flyTo`.
+  - Restyler les contrôles MapLibre (zoom, attribution) pour matcher les panneaux MUI (même rayon, même fond, même ombre). Ne pas retirer l'attribution OpenStreetMap.
+- **Section 5, animation** : micro-transitions (slide-in des panneaux, easing du collapse de légende, crossfade au changement de paramètre sur la carte), un seul token de courbe d'easing partagé, réserver l'espace pour le contenu async pour éviter le jank.
+- **Section 6, détails** : vrai jeu de favicon + `<title>` par vue + meta/OG, scrollbars custom themées dans les panneaux, focus-visible aux couleurs de la marque, panneau "À propos / sources" (Hub'Eau, IGN, caveat année partielle 2026).
+
 ## Commandes utiles
 
 ```bash

@@ -103,15 +103,6 @@ export function Legend({ parameterId, unitId, onUnitChange }: LegendProps) {
           <Tooltip
             arrow
             placement="top-start"
-            slotProps={{
-              tooltip: {
-                sx: {
-                  backgroundColor: "rgba(20, 20, 20, 0.92)",
-                  color: "#ffffff",
-                  "& .MuiTooltip-arrow": { color: "rgba(20, 20, 20, 0.92)" },
-                },
-              },
-            }}
             title={
               <Box sx={{ p: 0.5, maxWidth: 260 }}>
                 <Typography variant="caption" sx={{ display: "block", fontFamily: "monospace" }}>

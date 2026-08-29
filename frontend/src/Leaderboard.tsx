@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Chip from "@mui/material/Chip";
-import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
+import ReportGmailerrorredOutlinedIcon from "@mui/icons-material/ReportGmailerrorredOutlined";
 import { DataGrid, useGridApiRef, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
+
+import { EmptyState, PanelSkeleton } from "./PanelStates";
 
 import { fetchAggregation, type AggregationOut } from "./api";
 import { departmentFromInseeCode } from "./communes";
@@ -120,7 +121,6 @@ export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: Lea
                 borderRadius: 0.75,
                 backgroundColor: valueClass.color,
                 color: contrastText(valueClass.color),
-                fontWeight: 300,
               }}
             />
           );
@@ -188,15 +188,17 @@ export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: Lea
       </Typography>
 
       {error !== null && (
-        <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-          {error}
-        </Typography>
+        <EmptyState
+          icon={<ReportGmailerrorredOutlinedIcon />}
+          title={error}
+          detail="Réessayez dans un instant"
+          severity="error"
+          sx={{ flexGrow: 1 }}
+        />
       )}
 
       {error === null && aggregation === null && (
-        <Stack sx={{ alignItems: "center", py: 4 }}>
-          <CircularProgress size={24} />
-        </Stack>
+        <PanelSkeleton rows={12} sx={{ flexGrow: 1 }} />
       )}
 
       {aggregation !== null && (

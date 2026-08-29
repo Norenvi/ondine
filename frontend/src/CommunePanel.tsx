@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
-import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
@@ -12,14 +11,17 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import MenuItem from "@mui/material/MenuItem";
 import CloseIcon from "@mui/icons-material/Close";
+import ReportGmailerrorredOutlinedIcon from "@mui/icons-material/ReportGmailerrorredOutlined";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import TableRowsIcon from "@mui/icons-material/TableRows";
+import WaterDropOutlinedIcon from "@mui/icons-material/WaterDropOutlined";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { DataGrid, type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 
 import { fetchCommuneMesures, type MesureOut } from "./api";
 import { communeLabel, type CommuneSummary } from "./communes";
 import { formatDate } from "./format";
+import { EmptyState, PanelSkeleton } from "./PanelStates";
 import { classifyValue, contrastText, PARAMETERS, type ParameterId } from "./parameters";
 import { convertFromBase, formatValueWithUnit, type Unit } from "./units";
 
@@ -147,7 +149,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
         right: { xs: 0, sm: 16 },
         left: { xs: 0, sm: "auto" },
         zIndex: 1,
-        p: 2,
+        p: 0,
         width: { xs: "100%", sm: 600 },
         maxWidth: { xs: "100%", sm: "calc(90vw - 32px)" },
         maxHeight: { xs: "55vh", sm: "70vh" },
@@ -155,44 +157,56 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
         overflowY: "auto",
       }}
     >
-      <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
-        <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
-          {communeLabel(name, code)}
-        </Typography>
-        <IconButton size="small" onClick={onClose} aria-label="Fermer">
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </Stack>
-
-      {summary === null || valueClass === null ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Aucune mesure disponible
-        </Typography>
-      ) : (
-        <Box sx={{ mt: 1 }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <Typography variant="h4" component="p" sx={{ lineHeight: 1.2 }}>
-              {formatValueWithUnit(summary.mean, unit)}
-            </Typography>
-            <Chip
-              size="small"
-              label={valueClass.label}
-              sx={{
-                borderRadius: 0.75,
-                backgroundColor: valueClass.color,
-                color: contrastText(valueClass.color),
-                fontWeight: 300,
-              }}
-            />
-          </Stack>
-          <Typography variant="caption" color="text.secondary">
-            {summary.count} mesure(s), dernière le {formatDate(summary.latest)}
+      <Box
+        sx={{
+          position: "sticky",
+          top: 0,
+          zIndex: 3,
+          px: 2,
+          pt: 2,
+          pb: 1.5,
+          bgcolor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
+          <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
+            {communeLabel(name, code)}
           </Typography>
-        </Box>
-      )}
+          <IconButton size="small" onClick={onClose} aria-label="Fermer" sx={{ mt: -0.5, mr: -0.5 }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Stack>
 
-      <Divider sx={{ my: 1.5 }} />
+        {summary === null || valueClass === null ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Aucune mesure disponible
+          </Typography>
+        ) : (
+          <Box sx={{ mt: 0.5 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Typography variant="h4" component="p" sx={{ lineHeight: 1.1 }}>
+                {formatValueWithUnit(summary.mean, unit)}
+              </Typography>
+              <Chip
+                size="small"
+                label={valueClass.label}
+                sx={{
+                  borderRadius: 0.75,
+                  backgroundColor: valueClass.color,
+                  color: contrastText(valueClass.color),
+                }}
+              />
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {summary.count} mesure(s), dernière le {formatDate(summary.latest)}
+            </Typography>
+          </Box>
+        )}
+      </Box>
 
+      <Box sx={{ px: 2, pt: 1.5, pb: 2 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
         <Typography variant="subtitle2">
           Historique des relevés
@@ -241,19 +255,20 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
         </Stack>
       </Stack>
       {error !== null && (
-        <Typography variant="caption" color="error">
-          {error}
-        </Typography>
+        <EmptyState
+          icon={<ReportGmailerrorredOutlinedIcon />}
+          title={error}
+          detail="Réessayez dans un instant"
+          severity="error"
+        />
       )}
-      {error === null && mesures === null && (
-        <Stack sx={{ alignItems: "center", py: 2 }}>
-          <CircularProgress size={20} />
-        </Stack>
-      )}
+      {error === null && mesures === null && <PanelSkeleton rows={5} />}
       {mesures !== null && mesures.length === 0 && (
-        <Typography variant="caption" color="text.secondary">
-          Aucun relevé disponible
-        </Typography>
+        <EmptyState
+          icon={<WaterDropOutlinedIcon />}
+          title="Aucun relevé disponible"
+          detail="Ce paramètre n'est pas suivi dans cette commune"
+        />
       )}
       {mesures !== null && mesures.length > 0 && view === "table" && (
         <Box sx={{ height: 210, mt: 0.5 }}>
@@ -310,6 +325,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
       <Typography variant="caption" color="text.secondary">
         Code INSEE : {commune.code}
       </Typography>
+      </Box>
     </Paper>
   );
 }

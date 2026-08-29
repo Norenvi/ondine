@@ -303,12 +303,12 @@ export function TopBar({
   );
 
   return (
-    <AppBar position="static" color="default" elevation={1} sx={{ zIndex: 2 }}>
+    <AppBar position="static" sx={{ zIndex: 2 }}>
       <Toolbar variant="dense" sx={{ gap: 1.5, minHeight: 48 }}>
         <Typography
           variant="h5"
           component="div"
-          sx={{ flexShrink: 0, fontWeight: 100, letterSpacing: "0.1em" }}
+          sx={{ flexShrink: 0, fontSize: "1.375rem", fontWeight: 200, letterSpacing: "0.12em" }}
         >
           Ondine
         </Typography>

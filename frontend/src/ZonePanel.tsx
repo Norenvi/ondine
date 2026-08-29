@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Chip from "@mui/material/Chip";
-import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
+import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
+import ReportGmailerrorredOutlinedIcon from "@mui/icons-material/ReportGmailerrorredOutlined";
 import { DataGrid, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
+
+import { EmptyState, PanelSkeleton } from "./PanelStates";
 
 import { fetchZoneCommunes, type AggregationOut, type NiveauZoom } from "./api";
 import { loadEntityIndex, type EntitySummary } from "./entities";
@@ -97,7 +99,6 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
                 borderRadius: 0.75,
                 backgroundColor: valueClass.color,
                 color: contrastText(valueClass.color),
-                fontWeight: 300,
               }}
             />
           );
@@ -165,21 +166,26 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
       </Typography>
 
       {error !== null && (
-        <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-          {error}
-        </Typography>
+        <EmptyState
+          icon={<ReportGmailerrorredOutlinedIcon />}
+          title={error}
+          detail="Réessayez dans un instant"
+          severity="error"
+          sx={{ flexGrow: 1 }}
+        />
       )}
 
       {error === null && aggregation === null && (
-        <Stack sx={{ alignItems: "center", py: 4 }}>
-          <CircularProgress size={24} />
-        </Stack>
+        <PanelSkeleton rows={12} sx={{ flexGrow: 1 }} />
       )}
 
       {aggregation !== null && aggregation.length === 0 && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-          Aucune mesure disponible
-        </Typography>
+        <EmptyState
+          icon={<InboxOutlinedIcon />}
+          title="Aucune mesure disponible"
+          detail="Ce paramètre n'est pas suivi dans cette zone"
+          sx={{ flexGrow: 1 }}
+        />
       )}
 
       {aggregation !== null && aggregation.length > 0 && (
