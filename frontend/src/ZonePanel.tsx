@@ -132,13 +132,19 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
       elevation={4}
       sx={{
         position: "absolute",
-        top: 16,
-        bottom: 16,
-        right: 56,
+        // Full-width bottom sheet on a phone screen (fixed height instead of top+bottom
+        // pinning, which would otherwise cover the whole viewport) rather than the desktop
+        // side panel.
+        top: { xs: "auto", sm: 16 },
+        bottom: { xs: 0, sm: 16 },
+        right: { xs: 0, sm: 56 },
+        left: { xs: 0, sm: "auto" },
+        height: { xs: "55vh", sm: "auto" },
         zIndex: 1,
         p: 2,
-        width: 800,
-        maxWidth: "calc(100vw - 72px)",
+        width: { xs: "100%", sm: 800 },
+        maxWidth: { xs: "100%", sm: "calc(100vw - 72px)" },
+        borderRadius: { xs: 0, sm: 1 },
         display: "flex",
         flexDirection: "column",
       }}
@@ -155,7 +161,7 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
         {entity.name}
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        {parameter.label} par commune ({LEVEL_CONFIG[entity.level].label.toLowerCase()})
+        {parameter.label} - Moyenne des relevés par commune ({LEVEL_CONFIG[entity.level].label.toLowerCase()})
       </Typography>
 
       {error !== null && (

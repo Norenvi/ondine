@@ -358,10 +358,14 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
     instance.setFeatureState({ source: SOURCE_ID, id: selectedEntity.code }, { selected: true });
 
     const [minLon, minLat, maxLon, maxLat] = selectedEntity.bbox;
-    // Right padding clears whichever detail panel App.tsx renders for this selection:
-    // CommunePanel (600 wide) for a commune, ZonePanel (800 wide) for anything else.
-    const padding =
-      selectedEntity.level === "commune"
+    // Padding clears whichever detail panel App.tsx renders for this selection. On a phone
+    // width (matches the panels' own "sm" breakpoint switch to a bottom sheet) that panel
+    // sits along the bottom edge instead of a side, so the padding moves from right to
+    // bottom instead of shrinking the same side further.
+    const isMobile = window.innerWidth < 600;
+    const padding = isMobile
+      ? { top: 40, bottom: window.innerHeight * 0.55 + 20, left: 20, right: 20 }
+      : selectedEntity.level === "commune"
         ? { top: 80, bottom: 80, left: 90, right: 600 }
         : { top: 80, bottom: 80, left: 80, right: 800 };
     instance.fitBounds(

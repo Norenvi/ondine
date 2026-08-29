@@ -141,13 +141,17 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
       elevation={4}
       sx={{
         position: "absolute",
-        bottom: 32,
-        right: 16,
+        // Full-width bottom sheet on a phone screen instead of a small corner card, so it
+        // doesn't get squeezed into an unreadable sliver next to the map.
+        bottom: { xs: 0, sm: 32 },
+        right: { xs: 0, sm: 16 },
+        left: { xs: 0, sm: "auto" },
         zIndex: 1,
         p: 2,
-        width: 600,
-        maxWidth: "calc(90vw - 32px)",
-        maxHeight: "70vh",
+        width: { xs: "100%", sm: 600 },
+        maxWidth: { xs: "100%", sm: "calc(90vw - 32px)" },
+        maxHeight: { xs: "55vh", sm: "70vh" },
+        borderRadius: { xs: 0, sm: 1 },
         overflowY: "auto",
       }}
     >
