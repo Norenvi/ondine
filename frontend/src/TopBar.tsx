@@ -308,7 +308,7 @@ export function TopBar({
         <Typography
           variant="h5"
           component="div"
-          sx={{ flexShrink: 0, fontSize: "1.375rem", fontWeight: 200, letterSpacing: "0.12em" }}
+          sx={{ flexShrink: 0, fontSize: "1.625rem", fontWeight: 200, letterSpacing: "0.12em" }}
         >
           Ondine
         </Typography>
