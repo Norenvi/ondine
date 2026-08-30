@@ -1,21 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Box from "@mui/material/Box";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 
-import type { NiveauZoom } from "./api";
+import { fetchAnnees, type NiveauZoom } from "./api";
 import { CommunePanel } from "./CommunePanel";
 import type { EntitySummary } from "./entities";
 import { Leaderboard } from "./Leaderboard";
 import { Legend } from "./Legend";
 import { MapView } from "./MapView";
 import { PARAMETERS, type ParameterId } from "./parameters";
+import { Timeline } from "./Timeline";
 import { TopBar } from "./TopBar";
 import { useColorMode } from "./theme";
 import type { UnitId } from "./units";
 import { ZonePanel } from "./ZonePanel";
 
 const DEFAULT_PARAMETER_ID: ParameterId = "durete";
+// Shown until GET /annees resolves and snaps the selection to the most recent year.
+const FALLBACK_ANNEE = 2026;
 
 function App() {
   const { mode, theme, toggleMode } = useColorMode();
@@ -24,6 +27,21 @@ function App() {
   const [selectedEntity, setSelectedEntity] = useState<EntitySummary | null>(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [level, setLevel] = useState<NiveauZoom>("commune");
+  const [annees, setAnnees] = useState<number[]>([]);
+  const [annee, setAnnee] = useState<number>(FALLBACK_ANNEE);
+
+  // One fetch on mount: populate the timeline ticks and land on the most recent year rather
+  // than the hardcoded fallback. On failure the fallback stays and the timeline stays hidden.
+  useEffect(() => {
+    fetchAnnees()
+      .then((years) => {
+        if (years.length > 0) {
+          setAnnees(years);
+          setAnnee(years[years.length - 1]);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   function handleSelectEntity(entity: EntitySummary) {
     setLeaderboardOpen(false);
@@ -70,15 +88,18 @@ function App() {
             parameterId={parameterId}
             unit={unit}
             level={level}
+            annee={annee}
             selectedEntity={selectedEntity}
             onSelectEntity={handleSelectEntity}
           />
+          <Timeline annees={annees} annee={annee} onChange={setAnnee} />
           <Legend parameterId={parameterId} unitId={unitId} onUnitChange={setUnitId} />
           {selectedEntity !== null && selectedEntity.level === "commune" && (
             <CommunePanel
               commune={selectedEntity}
               parameterId={parameterId}
               unit={unit}
+              annee={annee}
               onClose={() => setSelectedEntity(null)}
             />
           )}
@@ -87,6 +108,7 @@ function App() {
               entity={selectedEntity}
               parameterId={parameterId}
               unit={unit}
+              annee={annee}
               onSelectCommune={handleDrillIntoCommune}
               onClose={() => setSelectedEntity(null)}
             />
@@ -95,6 +117,7 @@ function App() {
             <Leaderboard
               parameterId={parameterId}
               unit={unit}
+              annee={annee}
               onSelectCommune={handleSelectEntity}
               onClose={() => setLeaderboardOpen(false)}
             />

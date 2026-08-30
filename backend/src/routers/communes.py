@@ -4,7 +4,7 @@ for the search-result detail panel/table (see frontend CommunePanel).
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,7 @@ def get_commune_mesures(
     code_insee: str,
     session: Annotated[Session, Depends(get_session)],
     parametre: Annotated[Parametre, Depends(get_parametre)],
+    annee: Annotated[int | None, Query(description="Annee (archive Hub'Eau) a afficher")] = None,
 ) -> list[MesureOut]:
     if session.get(Commune, code_insee) is None:
         raise HTTPException(status_code=404, detail=f"Commune inconnue: {code_insee}")
@@ -46,5 +47,7 @@ def get_commune_mesures(
         .where(Mesure.code_insee == code_insee, Mesure.parametre_id == parametre.id)
         .order_by(Mesure.date_prel.desc())
     )
+    if annee is not None:
+        query = query.where(Mesure.annee == annee)
     rows = session.execute(query).all()
     return [MesureOut.model_validate(row, from_attributes=True) for row in rows]

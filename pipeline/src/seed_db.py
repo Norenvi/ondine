@@ -12,11 +12,13 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 from sqlalchemy import create_engine, insert, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 import transform
@@ -121,6 +123,23 @@ def load_admin_hierarchy(
     return region, departement, epci, commune
 
 
+def resolve_movement_chains(direct: dict[str, str]) -> dict[str, str]:
+    """Collapse a merged old -> new code map so a code that moved twice across different COG
+    vintages (X -> Y in one, Y -> Z in a later one) resolves straight to its final code.
+    Same walk transform.load_commune_movements does within a single table, re-applied over
+    the union of several. Cycles are broken by the visited set.
+    """
+    resolved: dict[str, str] = {}
+    for old_code in direct:
+        current = old_code
+        seen = {current}
+        while current in direct and direct[current] not in seen:
+            current = direct[current]
+            seen.add(current)
+        resolved[old_code] = current
+    return resolved
+
+
 def load_reseaux(com_udi: pd.DataFrame) -> pd.DataFrame:
     """One row per distribution network (cdreseau/nomreseau are consistently 1:1 in the data)."""
     reseaux = com_udi[["cdreseau", "nomreseau"]].drop_duplicates(subset="cdreseau")
@@ -145,6 +164,7 @@ MESURE_COPY_COLUMNS = (
     "valeur",
     "conclusion",
     "valeur_libelle",
+    "annee",
 )
 
 
@@ -207,7 +227,19 @@ def copy_mesures(session: Session, frame: pd.DataFrame) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--year", type=int, required=True, help="Year of Hub'Eau data to seed")
+    parser.add_argument(
+        "--year",
+        type=int,
+        required=True,
+        nargs="+",
+        help=(
+            "One or more years of Hub'Eau data to seed (e.g. '--year 2026' or "
+            "'--year 2024 2025 2026'). Each year is a dis-{year}.zip archive; every year "
+            "given is loaded into the same database, tagged with mesure.annee, and becomes a "
+            "position on the frontend timeline slider. The load is still a full truncate + "
+            "reload, so pass every year you want present on each run."
+        ),
+    )
     parser.add_argument(
         "--parametres",
         type=str,
@@ -229,6 +261,9 @@ def main() -> None:
         if missing:
             raise ValueError(f"Unknown parameter code(s): {sorted(missing)}")
 
+    years = sorted(set(args.year))
+    wanted_sandre = {p["cdparametre_sandre"] for p in parameters}
+
     database_url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     engine = create_engine(database_url)
     Base.metadata.create_all(engine, checkfirst=True)
@@ -237,29 +272,49 @@ def main() -> None:
     gpkg_path = extract_commune_gpkg(archive_path, RAW_DIR)
     region, departement, epci, commune = load_admin_hierarchy(gpkg_path)
 
-    zip_path = RAW_DIR / f"dis-{args.year}.zip"
-    result, plv, com_udi = transform.load_hubeau_tables(zip_path)
-    reseaux = load_reseaux(com_udi)
-
-    cog_zip_path = RAW_DIR / f"cog_ensemble_{args.year}_csv.zip"
+    # Obsolete commune code remapping. Hub'Eau keeps using pre-merger codes for years after a
+    # merger, and each archive year's codes reflect the COG of its own era, so a single COG
+    # vintage cannot resolve every year: 2020 data needs 2020-era movements, 2025 data needs
+    # 2025-era ones, and both still have to land on a code that exists in today's Admin Express.
+    # v_mvt_commune is cumulative within a vintage, so merging every available cog_ensemble
+    # (newer rows winning on conflict) and chain-resolving once gives the widest coverage.
+    cog_zips = sorted(RAW_DIR.glob("cog_ensemble_*_csv.zip"))
     movements: dict[str, str] | None = None
-    if cog_zip_path.exists():
+    if cog_zips:
         current_codes = transform.load_current_commune_codes()
-        movements = transform.load_commune_movements(cog_zip_path, current_codes)
+        merged: dict[str, str] = {}
+        for cog_zip in cog_zips:
+            merged.update(transform.load_commune_movements(cog_zip, current_codes))
+        movements = resolve_movement_chains(merged)
+        print(
+            f"Merged commune movements from {[z.name for z in cog_zips]}: "
+            f"{len(movements)} remaps"
+        )
+    else:
+        print("No cog_ensemble_*_csv.zip found, obsolete commune codes will not be remapped")
 
-    # Shrink RESULT to the monitored parameters once (6M rows -> ~1M), so the per-parameter
-    # filter_parameter calls below scan a small frame instead of the full file each time.
-    wanted_sandre = {p["cdparametre_sandre"] for p in parameters}
-    result = result[result["cdparametre"].isin(wanted_sandre)].copy()
+    def iter_year(year: int) -> Iterator[tuple[str, pd.DataFrame]]:
+        """Yield ("__reseaux__", reseaux) then (parameter_code, joined_mesures) for one
+        dis-{year}.zip. A generator, not a dict: the consumer copies and drops each frame
+        before the next is built, so only one parameter's joined frame is resident at a time
+        on top of the shared (already SANDRE-filtered) RESULT/PLV for the year.
+        """
+        zip_path = RAW_DIR / f"dis-{year}.zip"
+        result, plv, com_udi = transform.load_hubeau_tables(zip_path, wanted_sandre)
+        yield "__reseaux__", load_reseaux(com_udi)
 
-    joined_by_parameter = {}
-    for param in parameters:
-        filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
-        joined = transform.join_commune(filtered, plv, com_udi)
-        if movements is not None:
-            joined = transform.remap_commune_codes(joined, movements, "inseecommune")
-        joined_by_parameter[param["code"]] = joined
-        print(f"{param['code']}: {len(joined)} mesures after join")
+        for param in parameters:
+            filtered = transform.filter_parameter(
+                result, param["cdparametre_sandre"], param["unite"], allow_empty=True
+            )
+            if filtered.empty:
+                print(f"{year} {param['code']}: no measurement, skipped")
+                continue
+            joined = transform.join_commune(filtered, plv, com_udi)
+            if movements is not None:
+                joined = transform.remap_commune_codes(joined, movements, "inseecommune")
+            print(f"{year} {param['code']}: {len(joined)} mesures after join")
+            yield param["code"], joined
 
     with Session(engine) as session:
         # This whole load is one transaction reloaded from scratch each run: durability of
@@ -277,51 +332,61 @@ def main() -> None:
         session.execute(insert(Epci), epci.to_dict("records"))
         session.execute(insert(Commune), commune.to_dict("records"))
         session.execute(insert(Parametre), parameters)
-        session.execute(insert(Reseau), reseaux.to_dict("records"))
 
         parametre_ids = dict(session.execute(text("SELECT code, id FROM parametre")).all())
         known_codes = set(commune["code_insee"])
 
         rebuild_ddl = drop_mesure_indexes(session)
 
+        reseau_stmt = pg_insert(Reseau).on_conflict_do_nothing(index_elements=["cdreseau"])
         total_mesures = 0
-        for param in parameters:
-            joined = joined_by_parameter[param["code"]]
-            mesures = joined.rename(
-                columns={
-                    "inseecommune": "code_insee",
-                    "dateprel": "date_prel",
-                    "valtraduite": "valeur",
-                    "conclusionprel": "conclusion",
-                }
-            )
-            mesures["parametre_id"] = parametre_ids[param["code"]]
-            mesures["valeur_libelle"] = None
+        for year in years:
+            for code, frame in iter_year(year):
+                # A network serving water across several years reappears in every archive:
+                # keep the first row seen for its cdreseau (its PK) and skip the rest.
+                if code == "__reseaux__":
+                    session.execute(reseau_stmt, frame.to_dict("records"))
+                    continue
 
-            # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see
-            # CLAUDE.md: current scope is metropolitan France only), and a handful of codes
-            # remain genuinely unmatched (mergers Admin Express's own movements table can't
-            # resolve). The FK would reject them anyway: drop and report rather than fail loudly.
-            unmatched = mesures.loc[~mesures["code_insee"].isin(known_codes), "code_insee"].nunique()
-            if unmatched:
-                print(
-                    f"{param['code']}: {unmatched} distinct commune codes have no matching "
-                    "commune row, dropped"
+                mesures = frame.rename(
+                    columns={
+                        "inseecommune": "code_insee",
+                        "dateprel": "date_prel",
+                        "valtraduite": "valeur",
+                        "conclusionprel": "conclusion",
+                    }
                 )
-            mesures = mesures[mesures["code_insee"].isin(known_codes)]
+                mesures["parametre_id"] = parametre_ids[code]
+                mesures["valeur_libelle"] = None
+                mesures["annee"] = year
 
-            # Missing cdreseau/conclusion/date_prel (PLV fallback rows) stay as NaN here:
-            # copy_mesures serialises via CSV where an empty field already means NULL.
-            total_mesures += copy_mesures(session, mesures)
+                # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see
+                # CLAUDE.md: current scope is metropolitan France only), and a handful of codes
+                # remain genuinely unmatched (mergers the movements tables can't resolve). The
+                # FK would reject them anyway: drop and report rather than fail loudly.
+                unmatched = mesures.loc[~mesures["code_insee"].isin(known_codes), "code_insee"].nunique()
+                if unmatched:
+                    print(
+                        f"{year} {code}: {unmatched} distinct commune codes have no "
+                        "matching commune row, dropped"
+                    )
+                mesures = mesures[mesures["code_insee"].isin(known_codes)]
+
+                # Missing cdreseau/conclusion/date_prel (PLV fallback rows) stay as NaN here:
+                # copy_mesures serialises via CSV where an empty field already means NULL.
+                total_mesures += copy_mesures(session, mesures)
 
         for ddl in rebuild_ddl:
             session.execute(text(ddl))
+
+        total_reseaux = session.execute(text("SELECT count(*) FROM reseau")).scalar_one()
 
         session.commit()
 
     print(
         f"Seeded {len(region)} regions, {len(departement)} departements, {len(epci)} EPCI, "
-        f"{len(commune)} communes, {len(reseaux)} reseaux, {total_mesures} mesures"
+        f"{len(commune)} communes, {total_reseaux} reseaux, {total_mesures} mesures "
+        f"across years {years}"
     )
 
 

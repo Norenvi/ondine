@@ -33,11 +33,12 @@ type CommunePanelProps = {
   commune: CommuneSummary;
   parameterId: ParameterId;
   unit: Unit;
+  annee: number;
   onClose: () => void;
 };
 
 /** Bigger detail card shown for a commune selected via search. */
-export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePanelProps) {
+export function CommunePanel({ commune, parameterId, unit, annee, onClose }: CommunePanelProps) {
   const { code, name } = commune;
   const parameter = PARAMETERS[parameterId];
 
@@ -52,7 +53,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
     setError(null);
     setReseauFilter(ALL_RESEAUX);
 
-    fetchCommuneMesures(code, parameter.apiCode)
+    fetchCommuneMesures(code, parameter.apiCode, annee)
       .then((result) => {
         if (!cancelled) {
           setMesures(result);
@@ -67,7 +68,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
     return () => {
       cancelled = true;
     };
-  }, [code, parameter.apiCode]);
+  }, [code, parameter.apiCode, annee]);
 
   // Derived from the same measurements the table below shows, rather than a second API
   // call: mean/count/latest generalize to any parameter without backend involvement.
@@ -209,7 +210,7 @@ export function CommunePanel({ commune, parameterId, unit, onClose }: CommunePan
       <Box sx={{ px: 2, pt: 1.5, pb: 2 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
         <Typography variant="subtitle2">
-          Historique des relevés
+          Relevés {annee}
           {unit.symbol !== "" && (
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
               ({unit.symbol})

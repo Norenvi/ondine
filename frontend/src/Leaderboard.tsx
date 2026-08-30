@@ -19,6 +19,7 @@ import { convertFromBase, formatValue, type Unit } from "./units";
 type LeaderboardProps = {
   parameterId: ParameterId;
   unit: Unit;
+  annee: number;
   onSelectCommune: (entity: EntitySummary) => void;
   onClose: () => void;
 };
@@ -29,7 +30,7 @@ type Row = AggregationOut & { departement: string };
  * Every commune ranked by the active parameter, in the same visual language as
  * CommunePanel but much bigger: this is a browsing tool, not a detail card.
  */
-export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: LeaderboardProps) {
+export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose }: LeaderboardProps) {
   const parameter = PARAMETERS[parameterId];
   const apiRef = useGridApiRef();
 
@@ -48,7 +49,7 @@ export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: Lea
     setAggregation(null);
     setError(null);
 
-    fetchAggregation("commune", parameter.apiCode)
+    fetchAggregation("commune", parameter.apiCode, annee)
       .then((result) => {
         if (!cancelled) {
           setAggregation(result);
@@ -63,7 +64,7 @@ export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: Lea
     return () => {
       cancelled = true;
     };
-  }, [parameter.apiCode]);
+  }, [parameter.apiCode, annee]);
 
   const rows: Row[] = useMemo(
     () =>
@@ -184,7 +185,7 @@ export function Leaderboard({ parameterId, unit, onSelectCommune, onClose }: Lea
         Classement des communes
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        {parameter.label}, triées par valeur moyenne
+        {parameter.label} {annee}, triées par valeur moyenne
       </Typography>
 
       {error !== null && (

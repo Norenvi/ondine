@@ -67,11 +67,12 @@ type MapViewProps = {
   parameterId: ParameterId;
   unit: Unit;
   level: NiveauZoom;
+  annee: number;
   selectedEntity: EntitySummary | null;
   onSelectEntity: (entity: EntitySummary) => void;
 };
 
-export function MapView({ parameterId, unit, level, selectedEntity, onSelectEntity }: MapViewProps) {
+export function MapView({ parameterId, unit, level, annee, selectedEntity, onSelectEntity }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const popup = useRef<Popup | null>(null);
@@ -93,6 +94,8 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
   parameterIdRef.current = parameterId;
   const levelRef = useRef(level);
   levelRef.current = level;
+  const anneeRef = useRef(annee);
+  anneeRef.current = annee;
   const [details, setDetails] = useState<CommuneDetails | null>(null);
 
   useEffect(() => {
@@ -110,10 +113,15 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
   // Fetches per-feature values for a parameter/level and pushes them into feature-state:
   // every known feature is visited so switching parameter also clears features that had a
   // value under the old parameter but have none under the new one, instead of leaving it stale.
-  async function applyAggregation(instance: MapLibreMap, id: ParameterId, forLevel: NiveauZoom) {
+  async function applyAggregation(
+    instance: MapLibreMap,
+    id: ParameterId,
+    forLevel: NiveauZoom,
+    forAnnee: number,
+  ) {
     const [entities, aggregation] = await Promise.all([
       loadEntityIndex(forLevel),
-      fetchAggregation(forLevel, PARAMETERS[id].apiCode),
+      fetchAggregation(forLevel, PARAMETERS[id].apiCode, forAnnee),
     ]);
     const byCode = new Map(aggregation.map((row) => [row.code, row]));
 
@@ -220,7 +228,7 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
 
     instance.on("load", () => {
       addLayersForLevel(instance, levelRef.current, parameterIdRef.current);
-      void applyAggregation(instance, parameterIdRef.current, levelRef.current);
+      void applyAggregation(instance, parameterIdRef.current, levelRef.current, anneeRef.current);
     });
 
     instance.on("mousemove", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
@@ -304,8 +312,18 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
       "fill-color",
       buildFillColorExpression(PARAMETERS[parameterId].classes) as ExpressionSpecification,
     );
-    void applyAggregation(instance, parameterId, levelRef.current);
+    void applyAggregation(instance, parameterId, levelRef.current, anneeRef.current);
   }, [parameterId]);
+
+  // Timeline scrub: same parameter/level, just a different year of values. fetchAggregation
+  // serves visited years from its cache, so scrubbing back is instant.
+  useEffect(() => {
+    const instance = map.current;
+    if (instance === null || instance.getSource(SOURCE_ID) === undefined) {
+      return;
+    }
+    void applyAggregation(instance, parameterIdRef.current, levelRef.current, annee);
+  }, [annee]);
 
   useEffect(() => {
     const instance = map.current;
@@ -329,7 +347,7 @@ export function MapView({ parameterId, unit, level, selectedEntity, onSelectEnti
     instance.removeSource(SOURCE_ID);
 
     addLayersForLevel(instance, level, parameterIdRef.current);
-    void applyAggregation(instance, parameterIdRef.current, level);
+    void applyAggregation(instance, parameterIdRef.current, level, anneeRef.current);
   }, [level]);
 
   useEffect(() => {

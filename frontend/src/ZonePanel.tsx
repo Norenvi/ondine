@@ -22,6 +22,7 @@ type ZonePanelProps = {
   entity: EntitySummary;
   parameterId: ParameterId;
   unit: Unit;
+  annee: number;
   onSelectCommune: (entity: EntitySummary) => void;
   onClose: () => void;
 };
@@ -33,7 +34,7 @@ type ZonePanelProps = {
  * this stays at "one row per commune", same shape/DataGrid pattern as Leaderboard but scoped
  * to the clicked zone instead of all of France.
  */
-export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose }: ZonePanelProps) {
+export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, onClose }: ZonePanelProps) {
   const parameter = PARAMETERS[parameterId];
   const niveau = entity.level as Exclude<NiveauZoom, "commune">;
 
@@ -52,7 +53,7 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
     setAggregation(null);
     setError(null);
 
-    fetchZoneCommunes(niveau, entity.code, parameter.apiCode)
+    fetchZoneCommunes(niveau, entity.code, parameter.apiCode, annee)
       .then((result) => {
         if (!cancelled) {
           setAggregation(result);
@@ -67,7 +68,7 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
     return () => {
       cancelled = true;
     };
-  }, [niveau, entity.code, parameter.apiCode]);
+  }, [niveau, entity.code, parameter.apiCode, annee]);
 
   const columns: GridColDef<AggregationOut>[] = useMemo(
     () => [
@@ -162,7 +163,7 @@ export function ZonePanel({ entity, parameterId, unit, onSelectCommune, onClose 
         {entity.name}
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        {parameter.label} - Moyenne des relevés par commune ({LEVEL_CONFIG[entity.level].label.toLowerCase()})
+        {parameter.label} {annee} - Moyenne des relevés par commune ({LEVEL_CONFIG[entity.level].label.toLowerCase()})
       </Typography>
 
       {error !== null && (

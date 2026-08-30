@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import zipfile
 from pathlib import Path
 
@@ -28,11 +29,24 @@ PLV_USECOLS = ["referenceprel", "cdreseau", "dateprel", "inseecommuneprinc", "co
 COM_UDI_USECOLS = ["cdreseau", "nomreseau", "inseecommune"]
 
 
-def load_hubeau_tables(zip_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+# RESULT for a full year is ~2 GB uncompressed (~6M rows); read in chunks so the whole file
+# is never resident at once. 500k rows x 4 string columns per chunk is a few tens of MB.
+RESULT_CHUNK_ROWS = 500_000
+
+
+def load_hubeau_tables(
+    zip_path: Path,
+    result_sandre_filter: set[str] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load RESULT, PLV and COM_UDI from the DIS-{year}.zip archive, without extracting to disk.
 
     Only the columns downstream code needs are parsed (see *_USECOLS): the full RESULT file
     is far larger than what the pipeline touches.
+
+    result_sandre_filter: if given, RESULT is streamed in chunks and each chunk is reduced to
+    those SANDRE parameter codes before anything is concatenated. For a full year this is the
+    difference between a multi-GB intermediate frame and a ~1M-row one, which is what keeps
+    the seed from exhausting memory on the 7 GB WSL box.
     """
     with zipfile.ZipFile(zip_path) as archive:
         names = archive.namelist()
@@ -41,7 +55,24 @@ def load_hubeau_tables(zip_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.D
         com_udi_name = next(n for n in names if "COM_UDI" in n)
 
         with archive.open(result_name) as f:
-            result = pd.read_csv(f, encoding="utf-8", dtype=str, usecols=RESULT_USECOLS)
+            if result_sandre_filter is None:
+                result = pd.read_csv(f, encoding="utf-8", dtype=str, usecols=RESULT_USECOLS)
+            else:
+                kept = [
+                    chunk[chunk["cdparametre"].isin(result_sandre_filter)]
+                    for chunk in pd.read_csv(
+                        f,
+                        encoding="utf-8",
+                        dtype=str,
+                        usecols=RESULT_USECOLS,
+                        chunksize=RESULT_CHUNK_ROWS,
+                    )
+                ]
+                result = (
+                    pd.concat(kept, ignore_index=True)
+                    if kept
+                    else pd.DataFrame(columns=RESULT_USECOLS, dtype=str)
+                )
         with archive.open(plv_name) as f:
             plv = pd.read_csv(f, encoding="utf-8", dtype=str, usecols=PLV_USECOLS)
         with archive.open(com_udi_name) as f:
@@ -75,10 +106,27 @@ def load_commune_movements(zip_path: Path, current_codes: set[str]) -> dict[str,
     which produces old rows pointing at a code that is, today, still its own separate commune:
     a code that is currently standalone is never remapped away, whatever an old row claims.
     """
+    # The movements file has been named mvtcommune2020-csv.csv, mvtcommune2021.csv,
+    # mvtcommune_2022.csv, v_mvtcommune_2023.csv, then v_mvt_commune_{year}.csv from 2024 on.
+    def _is_movements_file(name: str) -> bool:
+        stem = name.rsplit("/", 1)[-1].lower().replace("_", "").replace("-", "")
+        return stem.startswith("mvtcommune") or stem.startswith("vmvtcommune")
+
     with zipfile.ZipFile(zip_path) as archive:
-        member = next(n for n in archive.namelist() if n.startswith("v_mvt_commune_"))
+        member = next(n for n in archive.namelist() if _is_movements_file(n))
         with archive.open(member) as f:
-            movements = pd.read_csv(f, dtype={"COM_AV": str, "COM_AP": str})
+            movements = pd.read_csv(f, dtype=str)
+
+    # The 2020 vintage used ID_COMMUNE_AVANT / TYPE_COMMUNE_AVANT (and _APRES); 2021+ use the
+    # COM_AV / TYPECOM_AV names this function expects. Normalise the old ones.
+    movements = movements.rename(
+        columns={
+            "ID_COMMUNE_AVANT": "COM_AV",
+            "ID_COMMUNE_APRES": "COM_AP",
+            "TYPE_COMMUNE_AVANT": "TYPECOM_AV",
+            "TYPE_COMMUNE_APRES": "TYPECOM_AP",
+        }
+    )
 
     # TYPECOM_AP=COMD rows record "commune déléguée" bookkeeping, an internal sub-unit that
     # keeps the old code alive inside the merged commune. It is not a real target commune,
@@ -119,32 +167,64 @@ def remap_commune_codes(df: pd.DataFrame, movements: dict[str, str], column: str
     return df.drop_duplicates(subset=["referenceprel", column])
 
 
-# A handful of rows report a parameter in a different unit than the rest (e.g. 23 out of
-# 26467 Aluminium rows in mg/L instead of µg/L, a lab-reporting quirk, not a code mix-up).
-# Below this share, mismatched-unit rows are dropped rather than failing the whole parameter;
-# a wrong SANDRE code would make the wrong unit the majority, not a fringe below this bound.
+# A share of rows report a parameter in a different unit than the rest (e.g. Aluminium in
+# mg/L instead of µg/L, a lab-reporting quirk, not a code mix-up). Up to this share it is
+# silent; above it, the mismatched rows are still dropped but with a warning, and it only
+# hard-fails when the expected unit is not even the majority, which is what a genuinely wrong
+# SANDRE code looks like. Older Hub'Eau years are noticeably messier, so a fixed silent
+# threshold that held for one year is too brittle across ten.
 MISMATCHED_UNIT_TOLERANCE = 0.01
 
 
-def filter_parameter(result: pd.DataFrame, cdparametre: str, expected_unit: str) -> pd.DataFrame:
+def normalize_unit(unit: str) -> str:
+    """Drop the parenthetical species token SISE-Eaux sometimes puts in a unit label:
+    mg(Mg)/L, mg(Cl2)/L, mg(Cu)/L all become mg/L. It names what was measured, not the
+    magnitude, and older years omit it entirely (plain mg/L), so the two forms are the same
+    quantity and must compare equal. Does not touch prefixes: mg/L and µg/L stay distinct.
+    """
+    return re.sub(r"\s*\([^)]*\)", "", str(unit)).strip()
+
+
+def filter_parameter(
+    result: pd.DataFrame,
+    cdparametre: str,
+    expected_unit: str,
+    allow_empty: bool = False,
+) -> pd.DataFrame:
     """Keep only measurements for the given SANDRE parameter code.
 
     The unit is asserted rather than assumed: picking the wrong parameter code yields
     numbers that still look plausible on a map, so it must fail here instead.
+
+    allow_empty: an absent parameter is an error for the single-parameter pipeline, but
+    normal when seeding many parameters over many years (a molecule may not have been
+    screened in an older campaign). Callers seeding a range pass True to get an empty frame
+    back instead of a raise.
     """
     filtered = result[result["cdparametre"] == cdparametre].copy()
     if filtered.empty:
+        if allow_empty:
+            return filtered
         raise ValueError(f"No measurement found for parameter {cdparametre}")
 
-    unit_counts = filtered["cdunitereferencesiseeaux"].value_counts()
-    mismatched_share = 1 - unit_counts.get(expected_unit, 0) / unit_counts.sum()
-    if mismatched_share > MISMATCHED_UNIT_TOLERANCE:
+    # Compare on the normalized form so mg(Mg)/L (recent) and mg/L (older) count as the same
+    # unit, while mg/L vs µg/L stay different.
+    norm_expected = normalize_unit(expected_unit)
+    norm_units = filtered["cdunitereferencesiseeaux"].map(normalize_unit)
+    raw_units = sorted(filtered["cdunitereferencesiseeaux"].dropna().unique())
+    mismatched_share = 1 - (norm_units == norm_expected).sum() / len(norm_units)
+    if mismatched_share > 0.5:
         raise ValueError(
-            f"Unexpected units for parameter {cdparametre}: {sorted(unit_counts.index)}, "
-            f"expected only {expected_unit} ({mismatched_share:.1%} mismatched, "
-            f"tolerance is {MISMATCHED_UNIT_TOLERANCE:.0%})"
+            f"Unexpected units for parameter {cdparametre}: {raw_units}, expected "
+            f"{expected_unit} but it is a minority ({mismatched_share:.1%} in other units): "
+            "likely a wrong SANDRE code"
         )
-    filtered = filtered[filtered["cdunitereferencesiseeaux"] == expected_unit]
+    if mismatched_share > MISMATCHED_UNIT_TOLERANCE:
+        print(
+            f"WARNING parameter {cdparametre}: {mismatched_share:.1%} of rows in units other "
+            f"than {expected_unit} ({raw_units}), dropped"
+        )
+    filtered = filtered[norm_units == norm_expected]
 
     filtered["valtraduite"] = pd.to_numeric(filtered["valtraduite"], errors="coerce")
     return filtered.dropna(subset=["valtraduite"])

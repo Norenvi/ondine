@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -107,12 +107,18 @@ class Mesure(Base):
         # A prelevement/network/parameter combination should not be seeded twice, whichever
         # source (COM_UDI vs PLV.inseecommuneprinc) it was recovered through.
         UniqueConstraint("referenceprel", "parametre_id", "code_insee"),
+        # Choropleth hot path: filter one parameter + one year, then join up to the target level.
+        Index("ix_mesure_parametre_annee", "parametre_id", "annee"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     referenceprel: Mapped[str]
     parametre_id: Mapped[int] = mapped_column(ForeignKey("parametre.id"), index=True)
     code_insee: Mapped[str] = mapped_column(ForeignKey("commune.code_insee"), index=True)
+    # Source archive year (dis-{annee}.zip). One archive is one calendar year of sampling
+    # (the current year's archive is partial until the year ends). Drives the timeline
+    # slider: the choropleth shows exactly one year, never a cross-year pooled average.
+    annee: Mapped[int] = mapped_column(index=True)
     cdreseau: Mapped[str | None] = mapped_column(ForeignKey("reseau.cdreseau"))
     date_prel: Mapped[datetime.date]
     valeur: Mapped[float]

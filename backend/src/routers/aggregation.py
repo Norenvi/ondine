@@ -7,7 +7,7 @@ zoom level later means adding an entry to LEVELS, not a new endpoint.
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,7 @@ def get_aggregation(
     niveau: NiveauZoom,
     session: Annotated[Session, Depends(get_session)],
     parametre: Annotated[Parametre, Depends(get_parametre)],
+    annee: Annotated[int | None, Query(description="Annee (archive Hub'Eau) a afficher")] = None,
 ) -> list[AggregationOut]:
     level = _LEVELS[niveau]
 
@@ -66,6 +67,8 @@ def get_aggregation(
         .join(Commune, Commune.code_insee == Mesure.code_insee)
         .where(Mesure.parametre_id == parametre.id)
     )
+    if annee is not None:
+        query = query.where(Mesure.annee == annee)
     for join_target, on_clause in level["joins"]:
         query = query.join(join_target, on_clause)
 
@@ -81,6 +84,7 @@ def get_zone_communes(
     code: str,
     session: Annotated[Session, Depends(get_session)],
     parametre: Annotated[Parametre, Depends(get_parametre)],
+    annee: Annotated[int | None, Query(description="Annee (archive Hub'Eau) a afficher")] = None,
 ) -> list[AggregationOut]:
     """Per-commune breakdown of one EPCI/departement/region, same row shape as the top-level
     aggregation but grouped by commune and scoped to the zone: the detail view for zoom levels
@@ -101,6 +105,8 @@ def get_zone_communes(
         .join(Commune, Commune.code_insee == Mesure.code_insee)
         .where(Mesure.parametre_id == parametre.id)
     )
+    if annee is not None:
+        query = query.where(Mesure.annee == annee)
     for join_target, on_clause in level["joins"]:
         query = query.join(join_target, on_clause)
     query = query.where(level["code"] == code)

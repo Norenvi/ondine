@@ -28,7 +28,7 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 │   │   ├── transform.py        # Filtre un paramètre (filter_parameter), jointure commune, remap codes obsolètes, agrège -> CSV (dureté uniquement, pour le GeoJSON)
 │   │   ├── join_geo.py         # Extrait le gpkg IGN du 7z, joint contours + dureté -> GeoJSON
 │   │   ├── simplify.py         # Simplification via mapshaper (subprocess) -> GeoJSON allégé
-│   │   └── seed_db.py          # Seed Postgres : hiérarchie admin + mesures multi-paramètres (voir backend/src/models.py)
+│   │   └── seed_db.py          # Seed Postgres : hiérarchie admin + mesures multi-paramètres, multi-années (--year accepte plusieurs années, chaque mesure taguée mesure.annee)
 │   │   # build_tiles.py (tuiles MVT via tippecanoe) : PAS encore écrit, prévu pour le multi-zoom carte
 │   ├── data/
 │   │   ├── raw/                # dis-2026.zip, ADMIN-EXPRESS-COG_*.7z, cog_ensemble_2026_csv.zip (gitignored)
@@ -46,8 +46,9 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 │   │   ├── schemas.py          # Pydantic : ParametreOut, AggregationOut, MesureOut, CommuneOut
 │   │   └── routers/
 │   │       ├── parametres.py   # GET /parametres
-│   │       ├── aggregation.py  # GET /aggregation/{commune|epci|departement|region}?parametre=code
-│   │       └── communes.py     # GET /communes/{code_insee}, GET /communes/{code_insee}/mesures?parametre=code
+│   │       ├── annees.py       # GET /annees (années seedées, distinct sur mesure.annee : ticks du slider timeline)
+│   │       ├── aggregation.py  # GET /aggregation/{commune|epci|departement|region}?parametre=code[&annee=YYYY]
+│   │       └── communes.py     # GET /communes/{code_insee}, GET /communes/{code_insee}/mesures?parametre=code[&annee=YYYY]
 │   ├── migrations/              # Alembic (env.py branche sur settings.database_url et models.Base.metadata)
 │   ├── alembic.ini
 │   ├── pyproject.toml           # Poetry : fastapi, uvicorn, sqlalchemy, psycopg, alembic, pydantic-settings
@@ -60,6 +61,7 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 │   │   ├── MapPopup.tsx        # Carte de detail MUI au survol (portail React dans le popup MapLibre)
 │   │   ├── CommunePanel.tsx    # Panneau au clic/recherche : resume + DataGrid des releves (fetch API)
 │   │   ├── Legend.tsx          # Legende (classes + plages du parametre actif) + switch unite + switch theme
+│   │   ├── Timeline.tsx        # Slider année (haut-centre carte), un tick par année de /annees, snap only ; masqué si une seule année seedée
 │   │   ├── parameters.ts       # Registre PARAMETERS (durete/ph/nitrates) : classes de couleur, unites, expression fill-color
 │   │   ├── units.ts            # Types/convertisseurs generiques (Unit, formatValue...), plus specifique a la durete
 │   │   ├── communes.ts         # Index commune (nom/code/bbox) charge une fois depuis le GeoJSON, pour la recherche
@@ -94,7 +96,8 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 - Le pipeline tourne **offline / à la demande**, pas en continu.
 
 ### Backend (FastAPI)
-- **Modèle relationnel** (`backend/src/models.py`) : `region` / `departement` / `epci` / `commune` (hiérarchie admin, sans géométrie) + `parametre` (catalogue, `code`/`cdparametre_sandre`/`unite`) + `reseau` (UDI) + `mesure` (grain = une ligne par mesure individuelle, FK vers `parametre`/`commune`/`reseau`, contrainte d'unicité `(referenceprel, parametre_id, code_insee)`).
+- **Modèle relationnel** (`backend/src/models.py`) : `region` / `departement` / `epci` / `commune` (hiérarchie admin, sans géométrie) + `parametre` (catalogue, `code`/`cdparametre_sandre`/`unite`) + `reseau` (UDI) + `mesure` (grain = une ligne par mesure individuelle, FK vers `parametre`/`commune`/`reseau`, contrainte d'unicité `(referenceprel, parametre_id, code_insee)`, colonne `annee` = année de l'archive Hub'Eau source, index composite `(parametre_id, annee)`).
+- **Axe temporel** : une archive `dis-{annee}.zip` = une année civile de prélèvements (l'archive de l'année en cours est partielle). Le choropleth affiche **une seule année à la fois** (jamais une moyenne inter-années), pilotée par `?annee=` sur les endpoints d'agrégation/mesures et par le slider `Timeline.tsx`. `?annee=` omis = toutes années confondues (utile pour du debug, l'UI passe toujours une année explicite).
 - Ajouter un paramètre = une ligne dans `parametre` + des lignes dans `mesure`, **zéro migration**.
 - Agrégation à n'importe quel niveau de zoom = un `JOIN mesure -> commune -> [epci|departement|(departement->region)]` + `GROUP BY`, pas de vue matérialisée pour l'instant (le volume actuel, ~1,35M lignes tous paramètres, reste rapide en requête directe).
 - Index sur les colonnes de jointure/filtre (`mesure.code_insee`, `mesure.parametre_id`, `commune.code_departement`, `commune.code_epci`, `departement.code_region`).
@@ -105,7 +108,8 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 - **MapLibre GL JS v6** pour le rendu carte.
 - **Material UI v9** + **MUI X DataGrid v9** (v8 de DataGrid ne supportait pas MUI v9, migration faite dans cette session). Pas de CSS custom, tout passe par `sx`/`GlobalStyles`.
 - Géométrie : **GeoJSON statique** (`communes_durete.geojson`, nom historique mais sert pour tous les paramètres désormais : il ne contient plus que `code_insee`/`nom_officiel`/géométrie, pas de valeurs).
-- Valeurs : fetch de `/api/aggregation/commune?parametre=<code>` (une fois au chargement, une fois à chaque changement de paramètre), injectées dans MapLibre via `setFeatureState` sur toutes les communes connues (celles absentes de la réponse API reçoivent `value: null` explicitement, pour ne pas garder l'ancienne valeur du paramètre précédent affichée).
+- Valeurs : fetch de `/api/aggregation/commune?parametre=<code>&annee=<YYYY>` (au chargement, puis à chaque changement de paramètre / niveau / année), injectées dans MapLibre via `setFeatureState` sur toutes les communes connues (celles absentes de la réponse API reçoivent `value: null` explicitement, pour ne pas garder l'ancienne valeur affichée). `fetchAggregation` a un cache module `(niveau, parametre, annee) -> réponse` pour que le va-et-vient sur le slider timeline soit instantané.
+- Année : `App.tsx` fetch `/annees` une fois au montage, part sur `2026` (fallback) puis se cale sur l'année la plus récente disponible. `Timeline.tsx` n'est rendu que s'il y a au moins deux années.
 - Fond de carte : **OpenMapTiles via le flux Etalab**, pas de clé requise. Reste en mode jour quel que soit le thème MUI.
 - Coloration choropleth : expression MapLibre `step` sur `["feature-state", "value"]` (pas `["get", ...]`), construite par `buildFillColorExpression()` dans `parameters.ts` à partir des classes du paramètre actif.
 - Chaque paramètre a ses propres classes de couleur dans `parameters.ts` : **séquentielle** pour dureté et nitrates (une extrémité = préoccupant), **divergente** pour le pH (centrée sur la neutralité, deux extrémités = préoccupantes, bornes réglementaires françaises 6,5/9).
@@ -139,8 +143,10 @@ Ce qui tourne de bout en bout, sur les données 2026 :
    - `durete` (SANDRE 1345, °f) : 441 324 mesures
    - `ph` (SANDRE 1302, unité pH) : 475 945 mesures
    - `nitrates` (SANDRE 1340, mg/L) : 447 024 mesures
-3. API FastAPI opérationnelle : `/parametres`, `/aggregation/{commune|epci|departement|region}?parametre=code`, `/communes/{code_insee}`, `/communes/{code_insee}/mesures?parametre=code`, `/health`, Swagger sur `/api/docs`.
-4. Frontend : carte + légende + recherche + panneau de détail, tous branchés sur les 3 paramètres via le sélecteur dans la TopBar.
+3. API FastAPI opérationnelle : `/parametres`, `/annees`, `/aggregation/{commune|epci|departement|region}?parametre=code[&annee=YYYY]`, `/communes/{code_insee}`, `/communes/{code_insee}/mesures?parametre=code[&annee=YYYY]`, `/health`, Swagger sur `/api/docs`.
+4. Frontend : carte + légende + recherche + panneau de détail + slider timeline, tous branchés sur les paramètres via le sélecteur dans la TopBar.
+
+Axe temporel : schéma + API + UI multi-années en place (colonne `mesure.annee`, `/annees`, `Timeline.tsx`). **2024, 2025, 2026** seedées en local (~27,8M mesures au total : 11,1M / 11,2M / 5,4M, 2026 étant une demi-année). Archives `dis-2016.zip` à `dis-2026.zip` et `cog_ensemble_2020..2026` présentes dans `pipeline/data/raw/` : relancer `seed_db.py --year 2016 2017 ... 2026` pour la série complète (compter ~2-3 min par année ; le chemin CSV -> Postgres a été rendu frugal en mémoire pour tenir sur le box WSL 7 Go, voir Pièges connus).
 
 Non fait / connu : pas de tuiles MVT, pas de multi-zoom sur la carte elle-même (l'API le permet déjà), pas de DROM, pas de tests, pas de vue matérialisée pour l'agrégation (pas nécessaire au volume actuel). Valeur aberrante connue côté dureté : un max à 610 °f, non investiguée.
 
@@ -183,7 +189,8 @@ cd pipeline
 .venv/bin/python src/join_geo.py --year 2026      # lent : reprojection de 34 746 polygones
 .venv/bin/python src/simplify.py --year 2026      # mapshaper
 cp data/processed/communes_durete_2026_simplified.geojson ../frontend/public/data/communes_durete.geojson
-.venv/bin/python src/seed_db.py --year 2026       # seed Postgres, tous paramètres de PARAMETERS, idempotent (TRUNCATE + reload)
+.venv/bin/python src/seed_db.py --year 2026            # seed Postgres, tous paramètres de PARAMETERS, idempotent (TRUNCATE + reload)
+.venv/bin/python src/seed_db.py --year 2024 2025 2026  # plusieurs années à la fois (chaque année = une position du slider timeline) ; toujours un TRUNCATE + reload complet, donc passer toutes les années voulues à chaque run
 
 # Backend (Poetry, venv dans backend/.venv)
 cd backend
@@ -233,7 +240,7 @@ DATABASE_URL=postgresql+psycopg://ondine:ondine@localhost:5433/ondine .venv/bin/
 pkill -f "ssh -f -N -L 5433:localhost:5432 ondine"
 ```
 
-`seed_db.py` est idempotent (TRUNCATE + reload), donc relancer la commande en cas de problème ne duplique rien. Le job traite ~5,4M lignes (24 paramètres) en ~2-3 min : le lancer en arrière-plan plutôt que d'attendre en bloquant le terminal.
+`seed_db.py` est idempotent (TRUNCATE + reload), donc relancer la commande en cas de problème ne duplique rien. Le job traite ~5,4M lignes (24 paramètres) par année en ~2-3 min : compter ~N fois ça pour `--year` avec N années (les années sont traitées séquentiellement, une seule archive RESULT résidente à la fois). Le lancer en arrière-plan plutôt que d'attendre en bloquant le terminal.
 
 Optimisations en place dans le chemin CSV -> Postgres (le seed était ~14 min avant, ~2,5 min après, l'INSERT ORM ligne par ligne pesait 90% du temps) :
 - `transform.load_hubeau_tables` ne parse que les colonnes utiles (`RESULT_USECOLS` etc.), pas les 17 colonnes du fichier RESULT.
@@ -253,14 +260,17 @@ Un `/parametres` vide ou un 404 `Parametre inconnu` sur `/aggregation` signifie 
 
 Environnement :
 - WSL2 avec ~7 Go de RAM. `simplify.py` passe un plafond de heap explicite à `mapshaper-xl` (défaut 8 Go = swap garanti ici).
+- **`seed_db.py` sur une année complète = ~2 Go de RESULT brut** (2x l'archive 2026 partielle). Un `pd.read_csv` global de ce fichier fait gonfler le tas pandas à plusieurs Go et a déjà fait tomber WSL (reboot, VS Code coupé en 1006). Deux garde-fous en place, ne pas les retirer : `transform.load_hubeau_tables(zip, result_sandre_filter=...)` lit RESULT par chunks et ne garde que les codes SANDRE monitorés (6M lignes -> ~1M) ; `seed_db.iter_year` est un générateur qui `yield` un paramètre à la fois pour que le consommateur COPY-e et libère chaque frame avant de construire la suivante.
+- Les fichiers `cog_ensemble_{annee}` ont changé de nom 5 fois (`mvtcommune2020-csv.csv` -> `v_mvt_commune_2026.csv`) et la vintage 2020 utilise `ID_COMMUNE_AVANT`/`TYPE_COMMUNE_AVANT` au lieu de `COM_AV`/`TYPECOM_AV`. `transform.load_commune_movements` gère les deux. `seed_db.py` fusionne toutes les vintages disponibles (les plus récentes gagnent sur conflit) puis re-résout les chaînes via `resolve_movement_chains` : couverture de remap maximale plutôt qu'une seule table.
 - Outils installés hors pip/npm : `docker.io`, `docker-compose-v2`, `tippecanoe`, `python3.12-venv`, `python3-pip` (via apt, nécessite le mot de passe utilisateur), `mapshaper` (via npm global), `poetry` (via `pip install --user`, PATH à inclure `~/.local/bin`).
 - Pas de `unzip` ni de `7z` en ligne de commande : utiliser `zipfile` (stdlib) et `py7zr`.
+- L'image `backend` copie le code au build (pas de bind mount) et applique `alembic upgrade head` au démarrage : après avoir ajouté une migration ou modifié le code backend, faire `docker compose up -d --build backend`, pas un simple `restart` (sinon le conteneur tourne sur l'ancien code et, si la base a déjà été montée à la nouvelle révision par un alembic local, il boucle sur `Can't locate revision`).
 - **`pipeline/Dockerfile` a `ENTRYPOINT ["python"]`** : `docker compose run --rm pipeline python src/seed_db.py ...` fait donc tourner `python python src/seed_db.py ...` (erreur `python: can't open file '/app/python'`). Ne pas répéter `python` dans la commande, l'ENTRYPOINT le fournit déjà.
 
 Données :
 - Inspecter les gros fichiers sans les charger : `zipfile.namelist()`, `pyogrio.list_layers()` / `read_info()`, `read_dataframe(..., max_features=3)`. Ne jamais lire un CSV/GeoJSON complet pour "voir à quoi il ressemble".
 - `fiona` n'est pas installé : geopandas 1.x utilise **pyogrio**.
-- Un mauvais `cdparametre` produit une carte crédible mais fausse. `filter_parameter()` **vérifie l'unité attendue** et lève sinon : garder ce garde-fou pour tout nouveau paramètre.
+- Un mauvais `cdparametre` produit une carte crédible mais fausse. `filter_parameter()` **vérifie l'unité attendue** : lève uniquement si l'unité attendue est minoritaire (< 50 %, signature d'un mauvais code SANDRE) ; au-dessus de `MISMATCHED_UNIT_TOLERANCE` (1 %) mais en dessous de 50 %, elle droppe les lignes hors-unité avec un WARNING plutôt que d'abandonner (les années anciennes sont plus sales que 2026, un seuil dur de 1 % ne tenait pas sur 10 ans). `allow_empty=True` (passé par `seed_db.py`) renvoie un frame vide au lieu de lever quand un paramètre est absent d'une année (molécule pas encore recherchée).
 - **Codes commune obsolètes après fusion** : Hub'Eau (`DIS_COM_UDI`) ne se resynchronise pas systématiquement avec le COG INSEE. Un même code peut avoir été réutilisé pour une commune totalement différente des décennies plus tôt (cas réel rencontré : `12218`/`12076`, Conques-en-Rouergue vs Saint-Cyprien-sur-Dourdou). `transform.py` (`load_commune_movements`, `remap_commune_codes`) ne remappe **que** les codes qui ne sont plus, aujourd'hui, un code commune valide (`load_current_commune_codes()`), et exclut les lignes `TYPECOM_AP=COMD` (communes déléguées, pas de vraie cible) et les scissions ambiguës (un code qui se scinde en plusieurs cibles distinctes n'est pas remappé, faute de pouvoir savoir laquelle est correcte). Le remap doit être re-déduppliqué après application (deux anciens codes peuvent converger vers le même code actuel).
 - **Trous de couverture `DIS_COM_UDI`** : un réseau peut être déclaré sous une seule commune alors qu'il en dessert plusieurs (cas réel : réseau "LEDENON-SERNHAC" déclaré seulement sous Ledenon). `join_commune()` dans `transform.py` union les résultats de `COM_UDI` avec `PLV.inseecommuneprinc` (dédupliqué par `referenceprel`+commune) pour récupérer ces cas.
 - Sur `dis-2026.zip` : `DIS_PLV` peut avoir plusieurs lignes pour le même `referenceprel` (un prélèvement partagé entre plusieurs réseaux interconnectés) ; sans dédup après jointure, une même mesure peut être comptée plusieurs fois pour une commune.
@@ -298,7 +308,8 @@ Frontend :
 - Les codes commune peuvent être obsolètes (fusions) ou mal couverts par `DIS_COM_UDI` (réseau partagé déclaré sous une seule commune) : voir la section Pièges connus, deux correctifs distincts et non redondants dans `transform.py`.
 - Attribution obligatoire à OpenStreetMap avec le fond OpenMapTiles/Etalab (déjà en place via `customAttribution` dans `MapView.tsx`, ne pas la retirer).
 - Les échelles d'unités par paramètre (`parameters.ts`) sont de **simples conversions de la valeur stockée**, jamais un recalcul : changer d'unité ne doit jamais reclasser une commune. Le pH et les nitrates n'ont chacun qu'une seule unité (pas de conversion), la dureté en a quatre (°f/ppm/°dH/mmol-L).
-- Les données ne couvrent qu'une année partielle (2026 = janvier à juin) ; les valeurs varient un peu avec la saison (dilution par les pluies, activité agricole pour les nitrates). Pertinent si on compare des millésimes.
+- L'archive de l'année en cours est partielle (2026 = janvier à juin) ; les valeurs varient un peu avec la saison (dilution par les pluies, activité agricole pour les nitrates). Pertinent quand le slider timeline compare l'année en cours à une année complète : `Timeline.tsx` affiche "annee en cours, partielle" quand l'année sélectionnée est l'année civile courante.
+- Le choropleth affiche **une année à la fois** (`AVG` SQL des mesures de cette année-là uniquement), jamais une moyenne inter-années. Défaut de l'UI = année la plus récente disponible.
 - Classes de couleur : **séquentielles** (une extrémité = préoccupant) pour dureté et nitrates, **divergentes** (deux extrémités = préoccupantes, centre = neutre/bon) pour le pH. Respecter cette distinction pour tout nouveau paramètre plutôt que réutiliser une rampe par défaut.
 
 ## Guidelines pour limiter la consommation de tokens

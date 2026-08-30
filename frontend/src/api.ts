@@ -28,12 +28,22 @@ export type NiveauZoom = "commune" | "epci" | "departement" | "region";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
+/** Timeline slider tick positions: the years (Hub'Eau archives) actually seeded. */
+export async function fetchAnnees(): Promise<number[]> {
+  const response = await fetch(`${API_BASE}/annees`);
+  if (!response.ok) {
+    throw new Error(`Echec du chargement des annees (${response.status})`);
+  }
+  return response.json() as Promise<number[]>;
+}
+
 export async function fetchCommuneMesures(
   codeInsee: string,
   parametre: string,
+  annee: number,
 ): Promise<MesureOut[]> {
   const response = await fetch(
-    `${API_BASE}/communes/${codeInsee}/mesures?parametre=${parametre}`,
+    `${API_BASE}/communes/${codeInsee}/mesures?parametre=${parametre}&annee=${annee}`,
   );
   if (!response.ok) {
     throw new Error(`Echec du chargement des releves (${response.status})`);
@@ -41,15 +51,30 @@ export async function fetchCommuneMesures(
   return response.json() as Promise<MesureOut[]>;
 }
 
+// The choropleth refetches on every parameter/level/year change, and scrubbing the timeline
+// back and forth revisits the same (niveau, parametre, annee) triples: cache the full
+// responses so a revisit is instant and costs no request.
+const aggregationCache = new Map<string, AggregationOut[]>();
+
 export async function fetchAggregation(
   niveau: NiveauZoom,
   parametre: string,
+  annee: number,
 ): Promise<AggregationOut[]> {
-  const response = await fetch(`${API_BASE}/aggregation/${niveau}?parametre=${parametre}`);
+  const key = `${niveau}:${parametre}:${annee}`;
+  const cached = aggregationCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const response = await fetch(
+    `${API_BASE}/aggregation/${niveau}?parametre=${parametre}&annee=${annee}`,
+  );
   if (!response.ok) {
     throw new Error(`Echec du chargement de l'agregation (${response.status})`);
   }
-  return response.json() as Promise<AggregationOut[]>;
+  const data = (await response.json()) as AggregationOut[];
+  aggregationCache.set(key, data);
+  return data;
 }
 
 /** Per-commune breakdown of one EPCI/departement/region (see ZonePanel): the detail view for
@@ -59,9 +84,10 @@ export async function fetchZoneCommunes(
   niveau: Exclude<NiveauZoom, "commune">,
   code: string,
   parametre: string,
+  annee: number,
 ): Promise<AggregationOut[]> {
   const response = await fetch(
-    `${API_BASE}/aggregation/${niveau}/${code}/communes?parametre=${parametre}`,
+    `${API_BASE}/aggregation/${niveau}/${code}/communes?parametre=${parametre}&annee=${annee}`,
   );
   if (!response.ok) {
     throw new Error(`Echec du chargement des communes (${response.status})`);

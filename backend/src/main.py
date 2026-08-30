@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db import get_session
-from routers import aggregation, communes, parametres
+from routers import aggregation, annees, communes, parametres
 
 # Caddy strips /api before proxying here (handle_path), so FastAPI never sees it in the
 # request path: root_path tells it anyway, so the generated OpenAPI/Swagger URLs are correct
@@ -29,6 +29,7 @@ app.add_middleware(
 app.include_router(parametres.router)
 app.include_router(aggregation.router)
 app.include_router(communes.router)
+app.include_router(annees.router)
 
 
 @app.get("/health")
