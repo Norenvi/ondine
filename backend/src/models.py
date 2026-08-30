@@ -135,3 +135,30 @@ class Mesure(Base):
     parametre: Mapped[Parametre] = relationship(back_populates="mesures")
     commune: Mapped[Commune] = relationship(back_populates="mesures")
     reseau: Mapped[Reseau | None] = relationship(back_populates="mesures")
+
+
+class CommuneValeur(Base):
+    """Pre-aggregated choropleth values: one row per (parametre, annee, commune), holding the
+    sum and count of that commune's individual `mesure` rows plus the latest sampling date.
+
+    Derived data, not a source: recomputed from scratch on every reseed, exactly like the
+    rest of the pipeline. It exists only because a live GROUP BY over ~100M `mesure` rows is
+    too slow to serve interactively on a small box; `mesure` stays the source of truth and
+    the per-commune detail-panel source.
+
+    The choropleth reads this at every zoom level. Commune level is a straight PK range scan
+    on (parametre_id, annee). EPCI/departement/region roll up as
+    SUM(valeur_somme) / SUM(nb_mesures) grouped by the target level, which is the pooled mean
+    over individual measurements (identical to a direct AVG(mesure.valeur)), not a mean of
+    commune means. `valeur` is non-nullable on `mesure`, so nb_mesures counts every row that
+    fed the sum.
+    """
+
+    __tablename__ = "commune_valeur"
+
+    parametre_id: Mapped[int] = mapped_column(ForeignKey("parametre.id"), primary_key=True)
+    annee: Mapped[int] = mapped_column(primary_key=True)
+    code_insee: Mapped[str] = mapped_column(ForeignKey("commune.code_insee"), primary_key=True)
+    valeur_somme: Mapped[float]
+    nb_mesures: Mapped[int]
+    derniere_mesure: Mapped[datetime.date]

@@ -138,7 +138,8 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
         // pinning, which would otherwise cover the whole viewport) rather than the desktop
         // side panel.
         top: { xs: "auto", sm: 16 },
-        bottom: { xs: 0, sm: 16 },
+        // Desktop bottom offset clears the centered Timeline (bottom: 24, ~48px tall).
+        bottom: { xs: 0, sm: 88 },
         right: { xs: 0, sm: 56 },
         left: { xs: 0, sm: "auto" },
         height: { xs: "55vh", sm: "auto" },

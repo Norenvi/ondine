@@ -145,8 +145,10 @@ export function CommunePanel({ commune, parameterId, unit, annee, onClose }: Com
       sx={{
         position: "absolute",
         // Full-width bottom sheet on a phone screen instead of a small corner card, so it
-        // doesn't get squeezed into an unreadable sliver next to the map.
-        bottom: { xs: 0, sm: 32 },
+        // doesn't get squeezed into an unreadable sliver next to the map. On desktop the
+        // bottom offset clears the centered Timeline (bottom: 24, ~48px tall) so its year
+        // ticks stay reachable while the panel is open.
+        bottom: { xs: 0, sm: 88 },
         right: { xs: 0, sm: 16 },
         left: { xs: 0, sm: "auto" },
         zIndex: 1,

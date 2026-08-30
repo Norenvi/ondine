@@ -6,6 +6,8 @@ import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
@@ -167,6 +169,76 @@ export function TopBar({
     onOpenLeaderboard();
   }
 
+  // Parameter picker: a compact Select in the toolbar on desktop, but the mobile drawer has
+  // room to spare, so there it becomes a plain always-visible list (no extra tap to open a
+  // menu, current parameter always in view).
+  const parameterPicker: ReactNode = isMobile ? (
+    <List
+      dense
+      disablePadding
+      aria-label="Parametre"
+      sx={{
+        backgroundColor: "background.paper",
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 1,
+      }}
+    >
+      {PARAMETER_GROUPS.flatMap((group) => [
+        <ListSubheader
+          key={`group-${group.label}`}
+          disableSticky
+          sx={{ lineHeight: "28px", backgroundColor: "transparent" }}
+        >
+          {group.label}
+        </ListSubheader>,
+        ...group.ids.map((id) => (
+          <ListItemButton
+            key={id}
+            dense
+            selected={id === parameterId}
+            onClick={() => onParameterChange(id)}
+          >
+            <ListItemIcon sx={{ minWidth: 32 }}>{PARAMETER_ICONS[id]}</ListItemIcon>
+            <ListItemText slotProps={{ primary: { variant: "body2" } }}>
+              {PARAMETERS[id].label}
+            </ListItemText>
+          </ListItemButton>
+        )),
+      ])}
+    </List>
+  ) : (
+    <Select<ParameterId>
+      size="small"
+      value={parameterId}
+      onChange={(event: SelectChangeEvent) => onParameterChange(event.target.value as ParameterId)}
+      renderValue={(value) => (
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
+          {PARAMETER_ICONS[value]}
+          <Typography variant="caption">{PARAMETERS[value].label}</Typography>
+        </Stack>
+      )}
+      sx={{
+        backgroundColor: "background.paper",
+        fontSize: "0.8125rem",
+        width: { xs: "100%", sm: "auto" },
+        "& .MuiSelect-select": { py: 0.75, display: "flex", alignItems: "center" },
+      }}
+    >
+      {PARAMETER_GROUPS.flatMap((group) => [
+        <ListSubheader key={`group-${group.label}`}>{group.label}</ListSubheader>,
+        ...group.ids.map((id) => (
+          <MenuItem key={id} value={id} dense>
+            <ListItemIcon sx={{ minWidth: 32 }}>{PARAMETER_ICONS[id]}</ListItemIcon>
+            <ListItemText slotProps={{ primary: { variant: "body2" } }}>
+              {PARAMETERS[id].label}
+            </ListItemText>
+          </MenuItem>
+        )),
+      ])}
+    </Select>
+  );
+
   // Same content either way, reused as-is inside the drawer on mobile (column direction/full
   // width already matches the xs styles below) and inline in the toolbar on larger screens.
   const controls: ReactNode = (
@@ -249,35 +321,7 @@ export function TopBar({
           />
         )}
       />
-      <Select<ParameterId>
-        size="small"
-        value={parameterId}
-        onChange={(event: SelectChangeEvent) => onParameterChange(event.target.value as ParameterId)}
-        renderValue={(value) => (
-          <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
-            {PARAMETER_ICONS[value]}
-            <Typography variant="caption">{PARAMETERS[value].label}</Typography>
-          </Stack>
-        )}
-        sx={{
-          backgroundColor: "background.paper",
-          fontSize: "0.8125rem",
-          width: { xs: "100%", sm: "auto" },
-          "& .MuiSelect-select": { py: 0.75, display: "flex", alignItems: "center" },
-        }}
-      >
-        {PARAMETER_GROUPS.flatMap((group) => [
-          <ListSubheader key={`group-${group.label}`}>{group.label}</ListSubheader>,
-          ...group.ids.map((id) => (
-            <MenuItem key={id} value={id} dense>
-              <ListItemIcon sx={{ minWidth: 32 }}>{PARAMETER_ICONS[id]}</ListItemIcon>
-              <ListItemText slotProps={{ primary: { variant: "body2" } }}>
-                {PARAMETERS[id].label}
-              </ListItemText>
-            </MenuItem>
-          )),
-        ])}
-      </Select>
+      {parameterPicker}
       {/* Leaderboard + theme toggle stay grouped in their own row, right-aligned, even
           when everything above them has stacked into a column. */}
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: { xs: "flex-end", sm: "flex-start" } }}>
@@ -326,7 +370,16 @@ export function TopBar({
         )}
       </Toolbar>
       <Drawer anchor="right" open={isMobile && drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <Box sx={{ width: "85vw", maxWidth: 340, p: 2 }}>
+        <Box
+          sx={{
+            width: "85vw",
+            maxWidth: 340,
+            p: 2,
+            height: "100%",
+            overflowY: "auto",
+            boxSizing: "border-box",
+          }}
+        >
           <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
             <Typography variant="subtitle1">Réglages</Typography>
             <IconButton size="small" onClick={() => setDrawerOpen(false)} aria-label="Fermer">

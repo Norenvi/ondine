@@ -41,13 +41,13 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 │   │   ├── main.py             # App FastAPI, root_path="/api" (Caddy strip le prefixe avant de proxy-er)
 │   │   ├── settings.py         # Config (DATABASE_URL) via pydantic-settings
 │   │   ├── db.py               # Engine SQLAlchemy + get_session (dependency FastAPI)
-│   │   ├── models.py           # ORM : region/departement/epci/commune/parametre/reseau/mesure
+│   │   ├── models.py           # ORM : region/departement/epci/commune/parametre/reseau/mesure + commune_valeur (cache d'agrégation)
 │   │   ├── deps.py             # get_parametre (resout ?parametre=code -> objet Parametre ou 404)
 │   │   ├── schemas.py          # Pydantic : ParametreOut, AggregationOut, MesureOut, CommuneOut
 │   │   └── routers/
 │   │       ├── parametres.py   # GET /parametres
-│   │       ├── annees.py       # GET /annees (années seedées, distinct sur mesure.annee : ticks du slider timeline)
-│   │       ├── aggregation.py  # GET /aggregation/{commune|epci|departement|region}?parametre=code[&annee=YYYY]
+│   │       ├── annees.py       # GET /annees (distinct sur commune_valeur.annee, mémoïsé par process : ticks du slider timeline)
+│   │       ├── aggregation.py  # GET /aggregation/{commune|epci|departement|region}?parametre=code[&annee=YYYY] (lit commune_valeur, pas mesure)
 │   │       └── communes.py     # GET /communes/{code_insee}, GET /communes/{code_insee}/mesures?parametre=code[&annee=YYYY]
 │   ├── migrations/              # Alembic (env.py branche sur settings.database_url et models.Base.metadata)
 │   ├── alembic.ini
@@ -98,8 +98,9 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 ### Backend (FastAPI)
 - **Modèle relationnel** (`backend/src/models.py`) : `region` / `departement` / `epci` / `commune` (hiérarchie admin, sans géométrie) + `parametre` (catalogue, `code`/`cdparametre_sandre`/`unite`) + `reseau` (UDI) + `mesure` (grain = une ligne par mesure individuelle, FK vers `parametre`/`commune`/`reseau`, contrainte d'unicité `(referenceprel, parametre_id, code_insee)`, colonne `annee` = année de l'archive Hub'Eau source, index composite `(parametre_id, annee)`).
 - **Axe temporel** : une archive `dis-{annee}.zip` = une année civile de prélèvements (l'archive de l'année en cours est partielle). Le choropleth affiche **une seule année à la fois** (jamais une moyenne inter-années), pilotée par `?annee=` sur les endpoints d'agrégation/mesures et par le slider `Timeline.tsx`. `?annee=` omis = toutes années confondues (utile pour du debug, l'UI passe toujours une année explicite).
-- Ajouter un paramètre = une ligne dans `parametre` + des lignes dans `mesure`, **zéro migration**.
-- Agrégation à n'importe quel niveau de zoom = un `JOIN mesure -> commune -> [epci|departement|(departement->region)]` + `GROUP BY`, pas de vue matérialisée pour l'instant (le volume actuel, ~1,35M lignes tous paramètres, reste rapide en requête directe).
+- Ajouter un paramètre = une ligne dans `parametre` + des lignes dans `mesure` (+ la ligne correspondante recalculée dans `commune_valeur` au prochain seed), **zéro migration**.
+- **Cache d'agrégation `commune_valeur`** (table dérivée, une ligne par `(parametre_id, annee, code_insee)` : `valeur_somme` / `nb_mesures` / `derniere_mesure`). Recalculée intégralement à chaque seed depuis `mesure` (`seed_db.populate_commune_valeur`, un `GROUP BY` par `parametre_id` pour tenir la RAM du box WSL). `mesure` reste la source de vérité et la source du panneau de détail ; `commune_valeur` n'existe que parce qu'un `GROUP BY` live sur ~114M lignes `mesure` mettait 8 s (24 s pour `/annees`) sur ce box (35 Go de table, 8 Go de RAM). Après cache : ~0,4 s au niveau commune, instantané ailleurs.
+- Agrégation à n'importe quel niveau de zoom = `commune_valeur -> JOIN commune -> [epci|departement|(departement->region)]` + `GROUP BY`. Le rollup EPCI/dept/région est `SUM(valeur_somme) / SUM(nb_mesures)` : exactement la moyenne poolée sur les mesures individuelles qu'un `AVG(mesure.valeur)` direct donnerait (pas une moyenne de moyennes communales), vérifié au chiffre près.
 - Index sur les colonnes de jointure/filtre (`mesure.code_insee`, `mesure.parametre_id`, `commune.code_departement`, `commune.code_epci`, `departement.code_region`).
 - `root_path="/api"` sur l'app FastAPI : nécessaire pour que Swagger (`/api/docs`) génère les bonnes URLs, puisque Caddy strip `/api` avant de transmettre la requête (le backend ne sait pas qu'il est monté sous ce préfixe sans cette config).
 - Alembic pointe sur `models.Base.metadata` et `settings.database_url`, donc `--autogenerate` fonctionne directement contre les modèles.
@@ -139,16 +140,13 @@ La géométrie ne va PAS dans Postgres (pas de PostGIS) : elle reste dans des fi
 Ce qui tourne de bout en bout, sur les données 2026 :
 
 1. Pipeline CSV/GeoJSON (dureté, pour la carte) : `transform.py` -> `join_geo.py` -> `simplify.py` -> copie dans `frontend/public/data/communes_durete.geojson` (39,5 Mo). **34 746 communes**, dont 81 sans mesure de dureté (contre 104 avant les correctifs de codes obsolètes/fallback PLV appliqués cette session).
-2. Base Postgres (`seed_db.py`) : 13 régions, 96 départements, 1241 EPCI, 34 746 communes, 22 661 réseaux, **1 354 171 mesures** réparties sur 3 paramètres :
-   - `durete` (SANDRE 1345, °f) : 441 324 mesures
-   - `ph` (SANDRE 1302, unité pH) : 475 945 mesures
-   - `nitrates` (SANDRE 1340, mg/L) : 447 024 mesures
-3. API FastAPI opérationnelle : `/parametres`, `/annees`, `/aggregation/{commune|epci|departement|region}?parametre=code[&annee=YYYY]`, `/communes/{code_insee}`, `/communes/{code_insee}/mesures?parametre=code[&annee=YYYY]`, `/health`, Swagger sur `/api/docs`.
-4. Frontend : carte + légende + recherche + panneau de détail + slider timeline, tous branchés sur les paramètres via le sélecteur dans la TopBar.
+2. Base Postgres (`seed_db.py`) : 13 régions, 96 départements, 1241 EPCI, 34 746 communes, ~24 442 réseaux, **~114,5M mesures** (`mesure`, 35 Go) sur les **24 paramètres** de `PARAMETERS` (durete/ph/nitrates/conductivite/turbidite/chlore_libre/chlorures/sulfates/calcium/magnesium/fer/aluminium/manganese/sodium/potassium/fluorures/bore/ecoli/plomb/cuivre/arsenic/bisphenol_a/thm/pesticides), plus le cache `commune_valeur` (~7,6M lignes, 736 Mo).
+3. API FastAPI opérationnelle : `/parametres`, `/annees`, `/aggregation/{commune|epci|departement|region}?parametre=code[&annee=YYYY]`, `/aggregation/{niveau}/{code}/communes` (détail d'une zone), `/communes/{code_insee}`, `/communes/{code_insee}/mesures?parametre=code[&annee=YYYY]`, `/health`, Swagger sur `/api/docs`.
+4. Frontend : carte + légende + recherche + panneau de détail + slider timeline (en bas de la carte), tous branchés sur les paramètres via le sélecteur dans la TopBar.
 
-Axe temporel : schéma + API + UI multi-années en place (colonne `mesure.annee`, `/annees`, `Timeline.tsx`). **2024, 2025, 2026** seedées en local (~27,8M mesures au total : 11,1M / 11,2M / 5,4M, 2026 étant une demi-année). Archives `dis-2016.zip` à `dis-2026.zip` et `cog_ensemble_2020..2026` présentes dans `pipeline/data/raw/` : relancer `seed_db.py --year 2016 2017 ... 2026` pour la série complète (compter ~2-3 min par année ; le chemin CSV -> Postgres a été rendu frugal en mémoire pour tenir sur le box WSL 7 Go, voir Pièges connus).
+Axe temporel : schéma + API + UI multi-années en place (colonne `mesure.annee`, `/annees`, `Timeline.tsx`). **2016 à 2026 seedées en local** (~114,5M mesures, 2026 étant une demi-année). Archives `dis-2016.zip` à `dis-2026.zip` et `cog_ensemble_2020..2026` dans `pipeline/data/raw/` (le `ADMIN-EXPRESS-COG*.7z` IGN et `dis-*.zip` sont gitignored et re-téléchargeables : `download.py --year YYYY` pour les DIS, URL directe `data.geopf.fr/telechargement/download/ADMIN-EXPRESS-COG/...` pour le 7z IGN, ~228 Mo). `seed_db.py --year ...` fait toujours un TRUNCATE + reload complet en **une transaction** (crash en cours de route = rollback propre, base vide, pas d'état partiel), donc passer toutes les années voulues en un seul run.
 
-Non fait / connu : pas de tuiles MVT, pas de multi-zoom sur la carte elle-même (l'API le permet déjà), pas de DROM, pas de tests, pas de vue matérialisée pour l'agrégation (pas nécessaire au volume actuel). Valeur aberrante connue côté dureté : un max à 610 °f, non investiguée.
+Non fait / connu : pas de tuiles MVT, pas de multi-zoom sur la carte elle-même (l'API le permet déjà), pas de DROM, pas de tests. Le cache d'agrégation `commune_valeur` **existe** désormais (mesuré nécessaire : voir plus haut). Valeur aberrante connue côté dureté : un max à 610 °f, non investiguée.
 
 Pour ajouter un nouveau paramètre (ex. bactériologie, plomb) : voir la discussion archivée sur les indicateurs candidats (nitrates/pH/pesticides faciles, bactériologie nécessite un mode d'agrégation différent — taux de conformité plutôt que moyenne, car les valeurs sont quasi binaires présence/absence).
 
@@ -161,6 +159,9 @@ Pistes envisagées, par ordre de coût croissant :
 2. Pour pH/nitrates spécifiquement, calculer un taux de conformité (part des mesures ou des communes hors seuil réglementaire) plutôt que ou en complément de la moyenne. Change la sémantique de l'agrégation, probablement une colonne ou un endpoint séparé plutôt qu'un ajout mineur.
 
 Piste 1 recommandée comme premier pas si le sujet est repris : coût faible, ne nécessite pas de trancher sur "la bonne" statistique, et communique déjà l'essentiel (le chiffre est une moyenne sur un ensemble hétérogène).
+
+**Niveau de zoom UDI (unité de distribution) sur la carte, en plus de commune/EPCI/dept/région.** Ce serait le meilleur asset possible : l'UDI est la granularité réelle des prélèvements Hub'Eau, un niveau UDI afficherait la qualité de l'eau distribuée sans le lissage inter-réseaux que l'agrégation commune introduit (le point soulevé juste au-dessus). Techniquement pas lourd côté données : l'UDI est **orthogonale** à la chaîne commune -> EPCI -> dept -> région (pas un cran de plus dessus), donc il faut un cache parallèle `reseau_valeur` `(parametre_id, annee, cdreseau) -> valeur_somme/nb_mesures/derniere_mesure` (miroir exact de `commune_valeur`, peuplé pareil dans `seed_db.py` en agrégeant `mesure` directement par `cdreseau`) + un chemin dédié dans `aggregation.py` pour `niveau=udi` qui lit ce cache sans jointure hiérarchie. Caveat : `mesure.cdreseau` est nullable (les lignes de fallback PLV via `inseecommuneprinc` n'ont pas de réseau), une part des mesures ne peut pas être placée sur une UDI.
+**Bloqueur = la géométrie.** Le contour des UDI n'est pas librement diffusable : le seul jeu national identifié (atlasante.fr, "DGS Métropole UDI 2023", `4e35f55a-e09f-4f92-9428-1d8c8ddc9c14`) est en **accès restreint** ("données sensibles pour la sécurité publique, ayants droit uniquement après signature d'une convention"), couvre 10 régions métro sur 13 d'après la fiche, millésime 2023, et pas de table de mouvements des `cdreseau` (les UDI bougent plus que les communes, donc les années anciennes seraient très trouées au niveau UDI). Reprendre le sujet si une source de contours UDI redistribuable apparaît (certaines ARS publient la leur en open data pour leur région).
 
 **Idée de classement général, toutes communes confondues sur tous les paramètres (`Leaderboard.tsx`).** Actuellement le classement est par paramètre (un seul `apiCode` à la fois). Idée soumise : un classement composite, une seule note par commune combinant tous les paramètres présents, pour répondre à "quelle commune a la meilleure eau, tout confondu".
 
@@ -261,6 +262,7 @@ Un `/parametres` vide ou un 404 `Parametre inconnu` sur `/aggregation` signifie 
 Environnement :
 - WSL2 avec ~7 Go de RAM. `simplify.py` passe un plafond de heap explicite à `mapshaper-xl` (défaut 8 Go = swap garanti ici).
 - **`seed_db.py` sur une année complète = ~2 Go de RESULT brut** (2x l'archive 2026 partielle). Un `pd.read_csv` global de ce fichier fait gonfler le tas pandas à plusieurs Go et a déjà fait tomber WSL (reboot, VS Code coupé en 1006). Deux garde-fous en place, ne pas les retirer : `transform.load_hubeau_tables(zip, result_sandre_filter=...)` lit RESULT par chunks et ne garde que les codes SANDRE monitorés (6M lignes -> ~1M) ; `seed_db.iter_year` est un générateur qui `yield` un paramètre à la fois pour que le consommateur COPY-e et libère chaque frame avant de construire la suivante.
+- **Un `GROUP BY` Postgres sur toute la table `mesure` (35 Go / ~114M lignes) fait tomber le box** (reboot, deux fois de suite en août 2026 en construisant `commune_valeur` d'un coup : scan IO soutenu + hash aggregate, le host Hyper-V tue la VM). Garde-fou en place : `seed_db.populate_commune_valeur` découpe le recalcul du cache **par `parametre_id`** (24 requêtes, bitmap scan via `ix_mesure_parametre_id`, `work_mem` 96 Mo, `ON CONFLICT DO NOTHING` = reprenable). Ne jamais réécrire ça en un seul `INSERT ... SELECT ... GROUP BY` global. Même principe pour toute future requête analytique full-table : la chunker.
 - Les fichiers `cog_ensemble_{annee}` ont changé de nom 5 fois (`mvtcommune2020-csv.csv` -> `v_mvt_commune_2026.csv`) et la vintage 2020 utilise `ID_COMMUNE_AVANT`/`TYPE_COMMUNE_AVANT` au lieu de `COM_AV`/`TYPECOM_AV`. `transform.load_commune_movements` gère les deux. `seed_db.py` fusionne toutes les vintages disponibles (les plus récentes gagnent sur conflit) puis re-résout les chaînes via `resolve_movement_chains` : couverture de remap maximale plutôt qu'une seule table.
 - Outils installés hors pip/npm : `docker.io`, `docker-compose-v2`, `tippecanoe`, `python3.12-venv`, `python3-pip` (via apt, nécessite le mot de passe utilisateur), `mapshaper` (via npm global), `poetry` (via `pip install --user`, PATH à inclure `~/.local/bin`).
 - Pas de `unzip` ni de `7z` en ligne de commande : utiliser `zipfile` (stdlib) et `py7zr`.
@@ -303,7 +305,7 @@ Frontend :
 
 ## Points d'attention métier (à ne pas casser)
 
-- Codes SANDRE des paramètres actuellement seedés : **1345** = dureté/Titre Hydrotimétrique (°f), **1302** = pH (unité pH), **1340** = nitrates en NO3 (mg/L). Ne pas confondre 1345 et 1340 (erreur présente dans une version antérieure de ce fichier).
+- Codes SANDRE des paramètres : **1345** = dureté/Titre Hydrotimétrique (°f), **1302** = pH (unité pH), **1340** = nitrates en NO3 (mg/L). Ne pas confondre 1345 et 1340 (erreur présente dans une version antérieure de ce fichier). La liste complète (24 paramètres) est dans `PARAMETERS` de `pipeline/src/seed_db.py`, avec le pendant `PARAMETERS` de `frontend/src/parameters.ts` (les 24 y ont une échelle de couleur).
 - Les données Hub'Eau sont à la granularité **UDI (unité de distribution)**, pas directement commune. Une UDI peut couvrir plusieurs communes ou une commune plusieurs UDI. L'agrégation actuelle est une **moyenne** des mesures de la commune (lisse les écarts entre réseaux plutôt que d'en privilégier un), aussi bien côté CSV pipeline que côté API (`AVG` SQL).
 - Les codes commune peuvent être obsolètes (fusions) ou mal couverts par `DIS_COM_UDI` (réseau partagé déclaré sous une seule commune) : voir la section Pièges connus, deux correctifs distincts et non redondants dans `transform.py`.
 - Attribution obligatoire à OpenStreetMap avec le fond OpenMapTiles/Etalab (déjà en place via `customAttribution` dans `MapView.tsx`, ne pas la retirer).
@@ -329,4 +331,4 @@ Frontend :
 - Basculer le fond de carte sur IGN sans discussion (friction technique connue avec les clés Géoportail)
 - Committer des fichiers de données bruts ou volumineux (> quelques Mo) dans le repo
 - Ajouter PostGIS ou stocker de la géométrie en base sans discussion (la géométrie reste dans des fichiers statiques/tuiles par choix d'architecture)
-- Ajouter une vue matérialisée ou un cache d'agrégation sans mesurer d'abord que l'agrégation à la volée (JOIN + GROUP BY) devient réellement un problème de performance
+- Supprimer ou contourner le cache d'agrégation `commune_valeur` (il a été mesuré nécessaire : 8 s -> 0,4 s au niveau commune sur ~114M lignes). Toute nouvelle table dérivée / vue matérialisée au-delà de celle-ci reste soumise à la même règle : mesurer d'abord que la requête directe est réellement un problème.

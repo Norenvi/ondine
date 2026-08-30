@@ -1,8 +1,10 @@
 """Choropleth data at any zoom level: commune, EPCI, departement, region.
 
-One endpoint, one code path for all four levels: aggregating is always "join mesure up the
-commune -> EPCI/departement -> region hierarchy, group by the target level's code". Adding a
-zoom level later means adding an entry to LEVELS, not a new endpoint.
+One code path for all four levels: aggregating is always "take the per-commune values from
+the commune_valeur cache, join them up the commune -> EPCI/departement -> region hierarchy,
+group by the target level's code". Adding a zoom level later means adding an entry to LEVELS,
+not a new endpoint. The cache is built by the pipeline seed (see pipeline/src/seed_db.py):
+a live GROUP BY over the ~100M-row mesure table is too slow to serve interactively.
 """
 
 from typing import Annotated, Literal
@@ -13,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from db import get_session
 from deps import get_parametre
-from models import Commune, Departement, Epci, Mesure, Parametre, Region
+from models import Commune, CommuneValeur, Departement, Epci, Parametre, Region
 from schemas import AggregationOut
 
 router = APIRouter(prefix="/aggregation", tags=["aggregation"])
@@ -56,19 +58,25 @@ def get_aggregation(
 ) -> list[AggregationOut]:
     level = _LEVELS[niveau]
 
+    # Read the pre-aggregated commune_valeur cache, not the ~100M-row mesure table. Rolling
+    # up as SUM(valeur_somme) / SUM(nb_mesures) is the pooled mean over individual
+    # measurements, identical to a direct AVG(mesure.valeur) at any level, not a mean of
+    # commune means. Commune level groups one row per key, so it just echoes the stored pair.
     query = (
         select(
             level["code"].label("code"),
             level["nom"].label("nom"),
-            func.avg(Mesure.valeur).label("valeur_moyenne"),
-            func.count(Mesure.id).label("nb_mesures"),
-            func.max(Mesure.date_prel).label("derniere_mesure"),
+            (func.sum(CommuneValeur.valeur_somme) / func.sum(CommuneValeur.nb_mesures)).label(
+                "valeur_moyenne"
+            ),
+            func.sum(CommuneValeur.nb_mesures).label("nb_mesures"),
+            func.max(CommuneValeur.derniere_mesure).label("derniere_mesure"),
         )
-        .join(Commune, Commune.code_insee == Mesure.code_insee)
-        .where(Mesure.parametre_id == parametre.id)
+        .join(Commune, Commune.code_insee == CommuneValeur.code_insee)
+        .where(CommuneValeur.parametre_id == parametre.id)
     )
     if annee is not None:
-        query = query.where(Mesure.annee == annee)
+        query = query.where(CommuneValeur.annee == annee)
     for join_target, on_clause in level["joins"]:
         query = query.join(join_target, on_clause)
 
@@ -94,19 +102,23 @@ def get_zone_communes(
     """
     level = _LEVELS[niveau]
 
+    # Same commune_valeur cache and same SUM(somme)/SUM(nb) rollup as the top-level
+    # aggregation, just grouped by commune and scoped to the one zone.
     query = (
         select(
             Commune.code_insee.label("code"),
             Commune.nom.label("nom"),
-            func.avg(Mesure.valeur).label("valeur_moyenne"),
-            func.count(Mesure.id).label("nb_mesures"),
-            func.max(Mesure.date_prel).label("derniere_mesure"),
+            (func.sum(CommuneValeur.valeur_somme) / func.sum(CommuneValeur.nb_mesures)).label(
+                "valeur_moyenne"
+            ),
+            func.sum(CommuneValeur.nb_mesures).label("nb_mesures"),
+            func.max(CommuneValeur.derniere_mesure).label("derniere_mesure"),
         )
-        .join(Commune, Commune.code_insee == Mesure.code_insee)
-        .where(Mesure.parametre_id == parametre.id)
+        .join(Commune, Commune.code_insee == CommuneValeur.code_insee)
+        .where(CommuneValeur.parametre_id == parametre.id)
     )
     if annee is not None:
-        query = query.where(Mesure.annee == annee)
+        query = query.where(CommuneValeur.annee == annee)
     for join_target, on_clause in level["joins"]:
         query = query.join(join_target, on_clause)
     query = query.where(level["code"] == code)

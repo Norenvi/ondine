@@ -149,10 +149,38 @@ def load_reseaux(com_udi: pd.DataFrame) -> pd.DataFrame:
 def truncate_all(session: Session) -> None:
     session.execute(
         text(
-            "TRUNCATE TABLE mesure, reseau, parametre, commune, epci, departement, region "
-            "RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE commune_valeur, mesure, reseau, parametre, commune, epci, "
+            "departement, region RESTART IDENTITY CASCADE"
         )
     )
+
+
+def populate_commune_valeur(session: Session, parametre_ids: list[int]) -> int:
+    """Recompute the commune_valeur choropleth cache from the freshly loaded mesure rows:
+    one row per (parametre, annee, commune) with the sum, count and latest date.
+
+    Done one parametre_id at a time, not in a single GROUP BY over the whole table: on the
+    small WSL box a full-table aggregate of ~100M rows drove the machine into an
+    out-of-memory reboot (same failure mode the chunked mesure load already guards against).
+    Each per-parametre slice is a bitmap scan of a few million rows via ix_mesure_parametre_id,
+    with a modest work_mem so the hash aggregate never spills large.
+    """
+    session.execute(text("SET LOCAL work_mem = '96MB'"))
+    total = 0
+    for parametre_id in parametre_ids:
+        result = session.execute(
+            text(
+                "INSERT INTO commune_valeur "
+                "(parametre_id, annee, code_insee, valeur_somme, nb_mesures, derniere_mesure) "
+                "SELECT parametre_id, annee, code_insee, "
+                "SUM(valeur), COUNT(*), MAX(date_prel) "
+                "FROM mesure WHERE parametre_id = :pid "
+                "GROUP BY parametre_id, annee, code_insee"
+            ),
+            {"pid": parametre_id},
+        )
+        total += result.rowcount
+    return total
 
 
 MESURE_COPY_COLUMNS = (
@@ -379,6 +407,9 @@ def main() -> None:
         for ddl in rebuild_ddl:
             session.execute(text(ddl))
 
+        total_valeurs = populate_commune_valeur(session, list(parametre_ids.values()))
+        print(f"Built commune_valeur cache: {total_valeurs} (parametre, annee, commune) rows")
+
         total_reseaux = session.execute(text("SELECT count(*) FROM reseau")).scalar_one()
 
         session.commit()
@@ -386,7 +417,7 @@ def main() -> None:
     print(
         f"Seeded {len(region)} regions, {len(departement)} departements, {len(epci)} EPCI, "
         f"{len(commune)} communes, {total_reseaux} reseaux, {total_mesures} mesures "
-        f"across years {years}"
+        f"({total_valeurs} commune_valeur rows) across years {years}"
     )
 
 
