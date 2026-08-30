@@ -233,7 +233,14 @@ DATABASE_URL=postgresql+psycopg://ondine:ondine@localhost:5433/ondine .venv/bin/
 pkill -f "ssh -f -N -L 5433:localhost:5432 ondine"
 ```
 
-`seed_db.py` est idempotent (TRUNCATE + reload), donc relancer la commande en cas de problème ne duplique rien. Le job traite ~2,7M lignes (6 paramètres) et prend plusieurs minutes : le lancer en arrière-plan plutôt que d'attendre en bloquant le terminal.
+`seed_db.py` est idempotent (TRUNCATE + reload), donc relancer la commande en cas de problème ne duplique rien. Le job traite ~5,4M lignes (24 paramètres) en ~2-3 min : le lancer en arrière-plan plutôt que d'attendre en bloquant le terminal.
+
+Optimisations en place dans le chemin CSV -> Postgres (le seed était ~14 min avant, ~2,5 min après, l'INSERT ORM ligne par ligne pesait 90% du temps) :
+- `transform.load_hubeau_tables` ne parse que les colonnes utiles (`RESULT_USECOLS` etc.), pas les 17 colonnes du fichier RESULT.
+- `seed_db.main` pré-filtre RESULT sur les codes SANDRE monitorés une seule fois avant la boucle par paramètre.
+- `copy_mesures` : chargement de la table `mesure` via `COPY ... FORMAT csv` Postgres (buffer CSV sérialisé par pandas en C, curseur psycopg brut dans la transaction de la session), pas `insert(Mesure)` chunké ligne par ligne. En CSV un champ vide = NULL, donc les colonnes nullables (cdreseau/conclusion/date_prel) n'ont pas besoin de traitement NaN.
+- `drop_mesure_indexes` : drop des index secondaires + contrainte unique + FK de `mesure` avant le load, rebuild après (DDL réfléchie via `pg_get_constraintdef`/`pg_indexes`). Justifié car le load est un TRUNCATE + reload complet de données déjà dédupliquées côté pandas.
+- `SET LOCAL synchronous_commit = off` + `maintenance_work_mem = '256MB'` sur la transaction de load (portée session, pas une config serveur).
 
 Vérifier après coup que la base a bien des données (pas juste le schéma migré à vide) :
 ```bash

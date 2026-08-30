@@ -136,6 +136,75 @@ def truncate_all(session: Session) -> None:
     )
 
 
+MESURE_COPY_COLUMNS = (
+    "referenceprel",
+    "parametre_id",
+    "code_insee",
+    "cdreseau",
+    "date_prel",
+    "valeur",
+    "conclusion",
+    "valeur_libelle",
+)
+
+
+def drop_mesure_indexes(session: Session) -> list[str]:
+    """Drop mesure's secondary indexes and its unique / foreign-key constraints before a
+    bulk load, and return the DDL to rebuild them. Maintaining an index per row and checking
+    three FKs per row is the dominant cost of the seed; rebuilding once over the finished
+    table (with a validating scan) is far cheaper. Safe here because the load is a full
+    truncate + reload of trusted, already-deduplicated pipeline output.
+    """
+    rebuild: list[str] = []
+
+    cons = session.execute(
+        text(
+            "SELECT conname, pg_get_constraintdef(oid), contype FROM pg_constraint "
+            "WHERE conrelid = 'mesure'::regclass AND contype IN ('u', 'f')"
+        )
+    ).all()
+    fks = [(n, d) for n, d, t in cons if t == "f"]
+    uniques = [(n, d) for n, d, t in cons if t == "u"]
+    # drop FKs first (they can depend on the unique index), rebuild them last
+    for conname, _ in fks + uniques:
+        session.execute(text(f"ALTER TABLE mesure DROP CONSTRAINT {conname}"))
+    for conname, condef in uniques + fks:
+        rebuild.append(f"ALTER TABLE mesure ADD CONSTRAINT {conname} {condef}")
+
+    idx = session.execute(
+        text(
+            "SELECT indexname, indexdef FROM pg_indexes "
+            "WHERE tablename = 'mesure' AND indexname LIKE 'ix_%'"
+        )
+    ).all()
+    for indexname, indexdef in idx:
+        rebuild.append(indexdef)
+        session.execute(text(f"DROP INDEX {indexname}"))
+
+    return rebuild
+
+
+def copy_mesures(session: Session, frame: pd.DataFrame) -> int:
+    """Bulk-load a mesure DataFrame via Postgres COPY (one order of magnitude faster than
+    parametrised INSERT for millions of rows). The raw psycopg cursor runs inside the
+    session's transaction, so the surrounding truncate/load/commit stays atomic.
+
+    The frame is serialised to a CSV buffer by pandas (C code) rather than iterated row by
+    row in Python: at ~5M rows the per-cell Python overhead of write_row dominates otherwise.
+    In CSV mode an unquoted empty field is read as NULL, which is exactly what pandas emits
+    for NaN/None, so nullable columns need no special handling.
+    """
+    frame = frame[list(MESURE_COPY_COLUMNS)]
+    raw_conn = session.connection().connection.driver_connection
+    copy_sql = (
+        f"COPY mesure ({', '.join(MESURE_COPY_COLUMNS)}) FROM STDIN WITH (FORMAT csv)"
+    )
+    buffer = frame.to_csv(index=False, header=False)
+    with raw_conn.cursor() as cur, cur.copy(copy_sql) as copy:
+        copy.write(buffer)
+    return len(frame)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--year", type=int, required=True, help="Year of Hub'Eau data to seed")
@@ -178,6 +247,11 @@ def main() -> None:
         current_codes = transform.load_current_commune_codes()
         movements = transform.load_commune_movements(cog_zip_path, current_codes)
 
+    # Shrink RESULT to the monitored parameters once (6M rows -> ~1M), so the per-parameter
+    # filter_parameter calls below scan a small frame instead of the full file each time.
+    wanted_sandre = {p["cdparametre_sandre"] for p in parameters}
+    result = result[result["cdparametre"].isin(wanted_sandre)].copy()
+
     joined_by_parameter = {}
     for param in parameters:
         filtered = transform.filter_parameter(result, param["cdparametre_sandre"], param["unite"])
@@ -188,6 +262,14 @@ def main() -> None:
         print(f"{param['code']}: {len(joined)} mesures after join")
 
     with Session(engine) as session:
+        # This whole load is one transaction reloaded from scratch each run: durability of
+        # intermediate writes buys nothing, and turning it off removes a fsync per statement.
+        session.execute(text("SET LOCAL synchronous_commit = off"))
+        # Bigger sort/build memory + parallel workers for the index rebuilds at the end
+        # (defaults 64 MB / 2 spill a 5M-row build to a disk merge sort). Session-scoped,
+        # not a server change; 512 MB is safe transient on the 7 GB box.
+        session.execute(text("SET LOCAL maintenance_work_mem = '512MB'"))
+        session.execute(text("SET LOCAL max_parallel_maintenance_workers = 4"))
         truncate_all(session)
 
         session.execute(insert(Region), region.to_dict("records"))
@@ -199,6 +281,8 @@ def main() -> None:
 
         parametre_ids = dict(session.execute(text("SELECT code, id FROM parametre")).all())
         known_codes = set(commune["code_insee"])
+
+        rebuild_ddl = drop_mesure_indexes(session)
 
         total_mesures = 0
         for param in parameters:
@@ -213,18 +297,6 @@ def main() -> None:
             )
             mesures["parametre_id"] = parametre_ids[param["code"]]
             mesures["valeur_libelle"] = None
-            mesures = mesures[
-                [
-                    "referenceprel",
-                    "parametre_id",
-                    "code_insee",
-                    "cdreseau",
-                    "date_prel",
-                    "valeur",
-                    "conclusion",
-                    "valeur_libelle",
-                ]
-            ]
 
             # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see
             # CLAUDE.md: current scope is metropolitan France only), and a handful of codes
@@ -238,15 +310,12 @@ def main() -> None:
                 )
             mesures = mesures[mesures["code_insee"].isin(known_codes)]
 
-            # cdreseau can be missing for measurements only recovered via the PLV fallback
-            # path, and NaN is not a valid FK value: NULL is the correct "unknown network".
-            mesures = mesures.where(pd.notna(mesures), None)
+            # Missing cdreseau/conclusion/date_prel (PLV fallback rows) stay as NaN here:
+            # copy_mesures serialises via CSV where an empty field already means NULL.
+            total_mesures += copy_mesures(session, mesures)
 
-            chunk_size = 20_000
-            records = mesures.to_dict("records")
-            for start in range(0, len(records), chunk_size):
-                session.execute(insert(Mesure), records[start : start + chunk_size])
-            total_mesures += len(records)
+        for ddl in rebuild_ddl:
+            session.execute(text(ddl))
 
         session.commit()
 

@@ -20,8 +20,20 @@ PARAMETER_CODE_HARDNESS = "1345"
 EXPECTED_UNIT = "°f"
 
 
+# Only the columns the pipeline actually reads. RESULT is ~940 MB uncompressed with ~17
+# columns; restricting the parse to these four is the difference between a multi-GB and a
+# few-hundred-MB DataFrame (matters on the 7 GB WSL box), and cuts parse time too.
+RESULT_USECOLS = ["referenceprel", "cdparametre", "cdunitereferencesiseeaux", "valtraduite"]
+PLV_USECOLS = ["referenceprel", "cdreseau", "dateprel", "inseecommuneprinc", "conclusionprel"]
+COM_UDI_USECOLS = ["cdreseau", "nomreseau", "inseecommune"]
+
+
 def load_hubeau_tables(zip_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Load RESULT, PLV and COM_UDI from the DIS-{year}.zip archive, without extracting to disk."""
+    """Load RESULT, PLV and COM_UDI from the DIS-{year}.zip archive, without extracting to disk.
+
+    Only the columns downstream code needs are parsed (see *_USECOLS): the full RESULT file
+    is far larger than what the pipeline touches.
+    """
     with zipfile.ZipFile(zip_path) as archive:
         names = archive.namelist()
         result_name = next(n for n in names if "RESULT" in n)
@@ -29,11 +41,11 @@ def load_hubeau_tables(zip_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.D
         com_udi_name = next(n for n in names if "COM_UDI" in n)
 
         with archive.open(result_name) as f:
-            result = pd.read_csv(f, encoding="utf-8", dtype=str)
+            result = pd.read_csv(f, encoding="utf-8", dtype=str, usecols=RESULT_USECOLS)
         with archive.open(plv_name) as f:
-            plv = pd.read_csv(f, encoding="utf-8", dtype=str)
+            plv = pd.read_csv(f, encoding="utf-8", dtype=str, usecols=PLV_USECOLS)
         with archive.open(com_udi_name) as f:
-            com_udi = pd.read_csv(f, encoding="utf-8", dtype=str)
+            com_udi = pd.read_csv(f, encoding="utf-8", dtype=str, usecols=COM_UDI_USECOLS)
 
     return result, plv, com_udi
 
