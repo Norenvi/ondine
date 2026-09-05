@@ -56,7 +56,11 @@ function LegendRow({ color, label, range }: SwatchProps) {
 /** Legend for the choropleth, so the mapped value is never conveyed by color alone. */
 export function Legend({ parameterId, unitId, onUnitChange }: LegendProps) {
   const parameter = PARAMETERS[parameterId];
-  const unit = parameter.units[unitId] ?? parameter.units[parameter.defaultUnitId];
+  // A compliance parameter (E. coli) maps a non-conformity rate: the legend classes and
+  // subtitle are in percent, and the per-sample unit switch does not apply.
+  const unit = parameter.compliance
+    ? parameter.compliance.unit
+    : parameter.units[unitId] ?? parameter.units[parameter.defaultUnitId];
 
   // On a phone-sized screen a CommunePanel/ZonePanel bottom sheet takes the full width at
   // the bottom, so the legend moves to a compact bar near the top instead of overlapping it,

@@ -55,7 +55,12 @@ PARAMETERS = [
     {"cdparametre_sandre": "1367", "code": "potassium", "nom": "Potassium", "unite": "mg/L"},
     {"cdparametre_sandre": "7073", "code": "fluorures", "nom": "Fluorures", "unite": "mg/L"},
     {"cdparametre_sandre": "1362", "code": "bore", "nom": "Bore", "unite": "mg/L"},
-    {"cdparametre_sandre": "1449", "code": "ecoli", "nom": "Escherichia coli", "unite": "n/(100mL)"},
+    # seuil_conformite: a sample with valeur strictly above this fails the parameter's binding
+    # threshold. Set only where a pooled mean is the wrong summary (E. coli: any detection is a
+    # non-conformity, one high count would otherwise dominate the commune's figure). Drives
+    # commune_valeur.nb_non_conformes; the API then rolls up a non-compliance rate for it
+    # instead of the mean. Absent = mean, like every other parameter.
+    {"cdparametre_sandre": "1449", "code": "ecoli", "nom": "Escherichia coli", "unite": "n/(100mL)", "seuil_conformite": 0.0},
     {"cdparametre_sandre": "1382", "code": "plomb", "nom": "Plomb", "unite": "µg/L"},
     {"cdparametre_sandre": "1392", "code": "cuivre", "nom": "Cuivre", "unite": "mg(Cu)/L"},
     {"cdparametre_sandre": "1369", "code": "arsenic", "nom": "Arsenic", "unite": "µg/L"},
@@ -155,9 +160,15 @@ def truncate_all(session: Session) -> None:
     )
 
 
-def populate_commune_valeur(session: Session, parametre_ids: list[int]) -> int:
+def populate_commune_valeur(
+    session: Session,
+    parametre_ids: list[int],
+    seuil_by_id: dict[int, float] | None = None,
+) -> int:
     """Recompute the commune_valeur choropleth cache from the freshly loaded mesure rows:
-    one row per (parametre, annee, commune) with the sum, count and latest date.
+    one row per (parametre, annee, commune) with the sum, count and latest date, plus the
+    count of non-compliant samples for any parametre_id present in seuil_by_id (a sample is
+    non-compliant when valeur > the parametre's seuil_conformite); NULL for the rest.
 
     Done one parametre_id at a time, not in a single GROUP BY over the whole table: on the
     small WSL box a full-table aggregate of ~100M rows drove the machine into an
@@ -165,22 +176,74 @@ def populate_commune_valeur(session: Session, parametre_ids: list[int]) -> int:
     Each per-parametre slice is a bitmap scan of a few million rows via ix_mesure_parametre_id,
     with a modest work_mem so the hash aggregate never spills large.
     """
+    seuil_by_id = seuil_by_id or {}
     session.execute(text("SET LOCAL work_mem = '96MB'"))
     total = 0
     for parametre_id in parametre_ids:
+        params = {"pid": parametre_id}
+        if parametre_id in seuil_by_id:
+            non_conf_expr = "COUNT(*) FILTER (WHERE valeur > :seuil)"
+            params["seuil"] = seuil_by_id[parametre_id]
+        else:
+            non_conf_expr = "NULL::integer"
         result = session.execute(
             text(
                 "INSERT INTO commune_valeur "
-                "(parametre_id, annee, code_insee, valeur_somme, nb_mesures, derniere_mesure) "
+                "(parametre_id, annee, code_insee, valeur_somme, nb_mesures, derniere_mesure, "
+                "nb_non_conformes) "
                 "SELECT parametre_id, annee, code_insee, "
-                "SUM(valeur), COUNT(*), MAX(date_prel) "
+                f"SUM(valeur), COUNT(*), MAX(date_prel), {non_conf_expr} "
                 "FROM mesure WHERE parametre_id = :pid "
                 "GROUP BY parametre_id, annee, code_insee"
             ),
-            {"pid": parametre_id},
+            params,
         )
         total += result.rowcount
     return total
+
+
+def seuil_by_parametre_id(parameters: list[dict], parametre_ids: dict[str, int]) -> dict[int, float]:
+    """Map parametre_id -> seuil_conformite for the parameters that declare one and are present
+    in the target database. Passed to populate_commune_valeur so it fills nb_non_conformes.
+    """
+    return {
+        parametre_ids[p["code"]]: p["seuil_conformite"]
+        for p in parameters
+        if p.get("seuil_conformite") is not None and p["code"] in parametre_ids
+    }
+
+
+def recompute_cache(engine, parameters: list[dict]) -> None:
+    """Rebuild commune_valeur from the mesure rows already in the database, without touching
+    mesure itself: no Hub'Eau archive, no COPY, just the per-parametre GROUP BY. For rolling
+    out a new derived column (nb_non_conformes) or a changed seuil_conformite onto a database
+    that is already seeded, local or the Oracle VM (via the SSH tunnel, see CLAUDE.md).
+    """
+    with Session(engine) as session:
+        session.execute(text("SET LOCAL synchronous_commit = off"))
+        session.execute(text("SET LOCAL maintenance_work_mem = '256MB'"))
+        has_column = session.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'commune_valeur' AND column_name = 'nb_non_conformes'"
+            )
+        ).first()
+        if has_column is None:
+            raise SystemExit(
+                "commune_valeur.nb_non_conformes is missing: apply the Alembic migration first "
+                "(alembic upgrade head, or redeploy the backend container)"
+            )
+        parametre_ids = dict(session.execute(text("SELECT code, id FROM parametre")).all())
+        if not parametre_ids:
+            raise SystemExit("parametre table is empty: run a full --year seed first")
+        seuil_by_id = seuil_by_parametre_id(parameters, parametre_ids)
+        session.execute(text("TRUNCATE TABLE commune_valeur"))
+        total = populate_commune_valeur(session, list(parametre_ids.values()), seuil_by_id)
+        session.commit()
+    print(
+        f"Rebuilt commune_valeur cache: {total} (parametre, annee, commune) rows, "
+        f"non-conformity counts for {sorted(seuil_by_id)}"
+    )
 
 
 MESURE_COPY_COLUMNS = (
@@ -258,7 +321,6 @@ def main() -> None:
     parser.add_argument(
         "--year",
         type=int,
-        required=True,
         nargs="+",
         help=(
             "One or more years of Hub'Eau data to seed (e.g. '--year 2026' or "
@@ -266,6 +328,16 @@ def main() -> None:
             "given is loaded into the same database, tagged with mesure.annee, and becomes a "
             "position on the frontend timeline slider. The load is still a full truncate + "
             "reload, so pass every year you want present on each run."
+        ),
+    )
+    parser.add_argument(
+        "--recompute-cache",
+        action="store_true",
+        help=(
+            "Rebuild only the commune_valeur aggregation cache from the mesure rows already "
+            "in the database (no Hub'Eau archive needed), then exit. Use it to roll out a "
+            "changed commune_valeur schema or seuil_conformite onto an already-seeded "
+            "database. Mutually exclusive with --year."
         ),
     )
     parser.add_argument(
@@ -280,6 +352,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if bool(args.year) == bool(args.recompute_cache):
+        parser.error("pass exactly one of --year or --recompute-cache")
+
     all_parameters = PARAMETERS
     parameters = all_parameters
     if args.parametres is not None:
@@ -289,12 +364,18 @@ def main() -> None:
         if missing:
             raise ValueError(f"Unknown parameter code(s): {sorted(missing)}")
 
-    years = sorted(set(args.year))
-    wanted_sandre = {p["cdparametre_sandre"] for p in parameters}
-
     database_url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     engine = create_engine(database_url)
     Base.metadata.create_all(engine, checkfirst=True)
+
+    if args.recompute_cache:
+        # Threshold lookup uses the full registry, not the --parametres subset: the cache is
+        # rebuilt for every parametre already in the database regardless.
+        recompute_cache(engine, all_parameters)
+        return
+
+    years = sorted(set(args.year))
+    wanted_sandre = {p["cdparametre_sandre"] for p in parameters}
 
     archive_path = find_admin_express_archive(RAW_DIR)
     gpkg_path = extract_commune_gpkg(archive_path, RAW_DIR)
@@ -407,7 +488,11 @@ def main() -> None:
         for ddl in rebuild_ddl:
             session.execute(text(ddl))
 
-        total_valeurs = populate_commune_valeur(session, list(parametre_ids.values()))
+        total_valeurs = populate_commune_valeur(
+            session,
+            list(parametre_ids.values()),
+            seuil_by_parametre_id(parameters, parametre_ids),
+        )
         print(f"Built commune_valeur cache: {total_valeurs} (parametre, annee, commune) rows")
 
         total_reseaux = session.execute(text("SELECT count(*) FROM reseau")).scalar_one()

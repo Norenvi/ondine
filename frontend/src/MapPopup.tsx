@@ -31,6 +31,7 @@ export type CommuneDetails = {
   value: number | null;
   sampleCount: number | null;
   latestSample: string | null;
+  nonCompliantCount: number | null;
 };
 
 type MapPopupProps = {
@@ -38,12 +39,15 @@ type MapPopupProps = {
   classes: ValueClass[];
   unit: Unit;
   level: NiveauZoom;
+  /** The mapped value is a non-conformity rate (percent), not a measurement: change the
+   * caption from "N mesures" to "N / M prélèvements non conformes". */
+  compliance?: boolean;
   onClose?: () => void;
 };
 
 /** Detail card shown for the hovered feature, themed like the rest of the UI. */
-export function MapPopup({ details, classes, unit, level, onClose }: MapPopupProps) {
-  const { code, name, value, sampleCount, latestSample } = details;
+export function MapPopup({ details, classes, unit, level, compliance = false, onClose }: MapPopupProps) {
+  const { code, name, value, sampleCount, latestSample, nonCompliantCount } = details;
   // Classification always runs on the stored base-unit value, whatever unit is displayed.
   const valueClass = value === null ? null : classifyValue(value, classes);
 
@@ -83,7 +87,9 @@ export function MapPopup({ details, classes, unit, level, onClose }: MapPopupPro
             />
           </Stack>
           <Typography variant="caption" color="text.secondary">
-            {sampleCount ?? "?"} mesure(s)
+            {compliance
+              ? `${nonCompliantCount ?? 0} / ${sampleCount ?? "?"} prélèvement(s) non conforme(s)`
+              : `${sampleCount ?? "?"} mesure(s)`}
             {latestSample ? `, dernière le ${formatDate(latestSample)}` : ""}
           </Typography>
         </Box>

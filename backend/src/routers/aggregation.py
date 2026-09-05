@@ -49,6 +49,22 @@ _LEVELS: dict[NiveauZoom, dict] = {
 }
 
 
+def _compliance_columns() -> list:
+    """The two non-compliance rollup columns shared by both aggregation queries: the count of
+    failed samples and its percentage of all samples. Both collapse to NULL for a parameter
+    with no threshold (nb_non_conformes is NULL on every commune_valeur row for it), so the
+    frontend simply ignores them and shows valeur_moyenne instead.
+    """
+    return [
+        (
+            func.sum(CommuneValeur.nb_non_conformes)
+            * 100.0
+            / func.nullif(func.sum(CommuneValeur.nb_mesures), 0)
+        ).label("taux_non_conformite"),
+        func.sum(CommuneValeur.nb_non_conformes).label("nb_non_conformes"),
+    ]
+
+
 @router.get("/{niveau}", response_model=list[AggregationOut])
 def get_aggregation(
     niveau: NiveauZoom,
@@ -71,6 +87,7 @@ def get_aggregation(
             ),
             func.sum(CommuneValeur.nb_mesures).label("nb_mesures"),
             func.max(CommuneValeur.derniere_mesure).label("derniere_mesure"),
+            *_compliance_columns(),
         )
         .join(Commune, Commune.code_insee == CommuneValeur.code_insee)
         .where(CommuneValeur.parametre_id == parametre.id)
@@ -113,6 +130,7 @@ def get_zone_communes(
             ),
             func.sum(CommuneValeur.nb_mesures).label("nb_mesures"),
             func.max(CommuneValeur.derniere_mesure).label("derniere_mesure"),
+            *_compliance_columns(),
         )
         .join(Commune, Commune.code_insee == CommuneValeur.code_insee)
         .where(CommuneValeur.parametre_id == parametre.id)

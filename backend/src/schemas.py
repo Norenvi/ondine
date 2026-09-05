@@ -23,6 +23,12 @@ class AggregationOut(BaseModel):
     valeur_moyenne: float
     nb_mesures: int
     derniere_mesure: datetime.date
+    # Share of samples that failed the parameter's binding threshold, in percent (E. coli:
+    # any detection). None for parameters with no threshold: the frontend shows valeur_moyenne
+    # for those and taux_non_conformite for the others. nb_non_conformes is the numerator,
+    # surfaced alongside so a small-sample commune (1 of 2) is not read like a large one.
+    taux_non_conformite: float | None = None
+    nb_non_conformes: int | None = None
 
 
 class MesureOut(BaseModel):

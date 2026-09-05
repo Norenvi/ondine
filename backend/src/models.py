@@ -152,6 +152,13 @@ class CommuneValeur(Base):
     over individual measurements (identical to a direct AVG(mesure.valeur)), not a mean of
     commune means. `valeur` is non-nullable on `mesure`, so nb_mesures counts every row that
     fed the sum.
+
+    For a parameter with a binding threshold (E. coli: any detection is out of norm), the
+    pooled mean is meaningless: one high count skews a commune's figure while the regulatory
+    question is binary per sample. `nb_non_conformes` carries the count of samples that failed
+    the threshold, so /aggregation can roll up SUM(nb_non_conformes) / SUM(nb_mesures) as a
+    non-compliance rate instead. NULL for every parameter with no threshold (the pipeline only
+    fills it for those declaring a seuil_conformite).
     """
 
     __tablename__ = "commune_valeur"
@@ -162,3 +169,4 @@ class CommuneValeur(Base):
     valeur_somme: Mapped[float]
     nb_mesures: Mapped[int]
     derniere_mesure: Mapped[datetime.date]
+    nb_non_conformes: Mapped[int | None]

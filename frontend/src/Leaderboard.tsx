@@ -32,6 +32,9 @@ type Row = AggregationOut & { departement: string };
  */
 export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose }: LeaderboardProps) {
   const parameter = PARAMETERS[parameterId];
+  // A compliance parameter (E. coli) is ranked by its non-conformity rate, not the mean.
+  const compliance = parameter.compliance;
+  const valueField = compliance ? "taux_non_conformite" : "valeur_moyenne";
   const apiRef = useGridApiRef();
 
   const [aggregation, setAggregation] = useState<AggregationOut[] | null>(null);
@@ -100,12 +103,17 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
         width: 80,
       },
       {
-        field: "valeur_moyenne",
-        headerName: `Valeur (${unit.symbol || parameter.label})`,
+        field: valueField,
+        headerName: compliance
+          ? "Non conformité (%)"
+          : `Valeur (${unit.symbol || parameter.label})`,
         flex: 1,
         align: "right",
         headerAlign: "right",
-        valueFormatter: (value: number) => formatValue(convertFromBase(value, unit), unit),
+        valueFormatter: (value: number | null) =>
+          compliance
+            ? (value ?? 0).toFixed(1)
+            : formatValue(convertFromBase(value as number, unit), unit),
       },
       {
         field: "classe",
@@ -113,7 +121,10 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
         flex: 1,
         sortable: false,
         renderCell: (params) => {
-          const valueClass = classifyValue(params.row.valeur_moyenne, parameter.classes);
+          const valueClass = classifyValue(
+            (compliance ? params.row.taux_non_conformite : params.row.valeur_moyenne) ?? 0,
+            parameter.classes,
+          );
           return (
             <Chip
               size="small"
@@ -141,7 +152,7 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
         valueFormatter: (value: string) => formatDate(value),
       },
     ],
-    [unit, parameter, apiRef],
+    [unit, parameter, compliance, valueField, apiRef],
   );
 
   function handleRowClick(params: GridRowParams<Row>) {
@@ -186,7 +197,8 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
         Classement des communes
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        {parameter.label} {annee}, triées par valeur moyenne
+        {parameter.label} {annee}, triées par{" "}
+        {compliance ? "part de prélèvements non conformes" : "valeur moyenne"}
       </Typography>
 
       {error !== null && (
@@ -212,7 +224,7 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
           density="compact"
           onRowClick={handleRowClick}
           initialState={{
-            sorting: { sortModel: [{ field: "valeur_moyenne", sort: "asc" }] },
+            sorting: { sortModel: [{ field: valueField, sort: "asc" }] },
             pagination: { paginationModel: { pageSize: 100 } },
           }}
           pageSizeOptions={[25, 50, 100]}

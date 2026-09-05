@@ -70,18 +70,32 @@ export function CommunePanel({ commune, parameterId, unit, annee, onClose }: Com
     };
   }, [code, parameter.apiCode, annee]);
 
+  const compliance = parameter.compliance;
+  // Value shown in the summary header: a non-conformity rate (percent) for a compliance
+  // parameter, in its own unit, otherwise the pooled mean in the selected unit.
+  const summaryUnit = compliance ? compliance.unit : unit;
+
   // Derived from the same measurements the table below shows, rather than a second API
-  // call: mean/count/latest generalize to any parameter without backend involvement.
+  // call: mean/rate/count/latest generalize to any parameter without backend involvement.
   const summary = useMemo(() => {
     if (mesures === null || mesures.length === 0) {
       return null;
     }
-    const mean = mesures.reduce((sum, m) => sum + m.valeur, 0) / mesures.length;
     const latest = mesures.reduce((max, m) => (m.date_prel > max ? m.date_prel : max), mesures[0].date_prel);
-    return { mean, count: mesures.length, latest };
-  }, [mesures]);
+    if (compliance) {
+      const nonCompliant = mesures.filter((m) => m.valeur > compliance.threshold).length;
+      return {
+        value: (nonCompliant / mesures.length) * 100,
+        count: mesures.length,
+        latest,
+        nonCompliant,
+      };
+    }
+    const mean = mesures.reduce((sum, m) => sum + m.valeur, 0) / mesures.length;
+    return { value: mean, count: mesures.length, latest, nonCompliant: null as number | null };
+  }, [mesures, compliance]);
 
-  const valueClass = summary === null ? null : classifyValue(summary.mean, parameter.classes);
+  const valueClass = summary === null ? null : classifyValue(summary.value, parameter.classes);
 
   const rows = useMemo(
     () => (mesures ?? []).map((mesure, index) => ({ id: index, ...mesure })),
@@ -190,7 +204,7 @@ export function CommunePanel({ commune, parameterId, unit, annee, onClose }: Com
           <Box sx={{ mt: 0.5 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <Typography variant="h4" component="p" sx={{ lineHeight: 1.1 }}>
-                {formatValueWithUnit(summary.mean, unit)}
+                {formatValueWithUnit(summary.value, summaryUnit)}
               </Typography>
               <Chip
                 size="small"
@@ -203,7 +217,9 @@ export function CommunePanel({ commune, parameterId, unit, annee, onClose }: Com
               />
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              {summary.count} mesure(s), dernière le {formatDate(summary.latest)}
+              {summary.nonCompliant !== null
+                ? `${summary.nonCompliant} / ${summary.count} prélèvements non conformes, dernière le ${formatDate(summary.latest)}`
+                : `${summary.count} mesure(s), dernière le ${formatDate(summary.latest)}`}
             </Typography>
           </Box>
         )}

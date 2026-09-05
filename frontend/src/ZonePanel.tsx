@@ -36,6 +36,9 @@ type ZonePanelProps = {
  */
 export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, onClose }: ZonePanelProps) {
   const parameter = PARAMETERS[parameterId];
+  // A compliance parameter (E. coli) is ranked by its non-conformity rate, not the mean.
+  const compliance = parameter.compliance;
+  const valueField = compliance ? "taux_non_conformite" : "valeur_moyenne";
   const niveau = entity.level as Exclude<NiveauZoom, "commune">;
 
   const [aggregation, setAggregation] = useState<AggregationOut[] | null>(null);
@@ -78,12 +81,17 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
         flex: 1.5,
       },
       {
-        field: "valeur_moyenne",
-        headerName: `Valeur (${unit.symbol || parameter.label})`,
+        field: valueField,
+        headerName: compliance
+          ? "Non conformité (%)"
+          : `Valeur (${unit.symbol || parameter.label})`,
         flex: 1,
         align: "right",
         headerAlign: "right",
-        valueFormatter: (value: number) => formatValue(convertFromBase(value, unit), unit),
+        valueFormatter: (value: number | null) =>
+          compliance
+            ? (value ?? 0).toFixed(1)
+            : formatValue(convertFromBase(value as number, unit), unit),
       },
       {
         field: "classe",
@@ -91,7 +99,10 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
         flex: 1,
         sortable: false,
         renderCell: (params) => {
-          const valueClass = classifyValue(params.row.valeur_moyenne, parameter.classes);
+          const valueClass = classifyValue(
+            (compliance ? params.row.taux_non_conformite : params.row.valeur_moyenne) ?? 0,
+            parameter.classes,
+          );
           return (
             <Chip
               size="small"
@@ -119,7 +130,7 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
         valueFormatter: (value: string) => formatDate(value),
       },
     ],
-    [unit, parameter],
+    [unit, parameter, compliance, valueField],
   );
 
   function handleRowClick(params: GridRowParams<AggregationOut>) {
@@ -164,7 +175,9 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
         {entity.name}
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        {parameter.label} {annee} - Moyenne des relevés par commune ({LEVEL_CONFIG[entity.level].label.toLowerCase()})
+        {parameter.label} {annee} -{" "}
+        {compliance ? "Part des prélèvements non conformes" : "Moyenne des relevés"} par commune (
+        {LEVEL_CONFIG[entity.level].label.toLowerCase()})
       </Typography>
 
       {error !== null && (
@@ -198,7 +211,7 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
           density="compact"
           onRowClick={handleRowClick}
           initialState={{
-            sorting: { sortModel: [{ field: "valeur_moyenne", sort: "asc" }] },
+            sorting: { sortModel: [{ field: valueField, sort: "asc" }] },
             pagination: { paginationModel: { pageSize: 100 } },
           }}
           pageSizeOptions={[25, 50, 100]}

@@ -22,6 +22,11 @@ export type AggregationOut = {
   valeur_moyenne: number;
   nb_mesures: number;
   derniere_mesure: string;
+  // Non-null only for a parameter with a binding threshold (see PARAMETERS[...].compliance):
+  // taux_non_conformite is the share of samples that failed it, in percent; nb_non_conformes
+  // is the count. The frontend shows these instead of valeur_moyenne for such parameters.
+  taux_non_conformite: number | null;
+  nb_non_conformes: number | null;
 };
 
 export type NiveauZoom = "commune" | "epci" | "departement" | "region";

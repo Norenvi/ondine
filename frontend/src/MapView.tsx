@@ -60,6 +60,7 @@ function readDetails(
     value: typeof state.value === "number" ? state.value : null,
     sampleCount: typeof state.sample_count === "number" ? state.sample_count : null,
     latestSample: typeof state.latest_sample === "string" ? state.latest_sample : null,
+    nonCompliantCount: typeof state.non_compliant_count === "number" ? state.non_compliant_count : null,
   };
 }
 
@@ -119,20 +120,29 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
     forLevel: NiveauZoom,
     forAnnee: number,
   ) {
+    const param = PARAMETERS[id];
     const [entities, aggregation] = await Promise.all([
       loadEntityIndex(forLevel),
-      fetchAggregation(forLevel, PARAMETERS[id].apiCode, forAnnee),
+      fetchAggregation(forLevel, param.apiCode, forAnnee),
     ]);
     const byCode = new Map(aggregation.map((row) => [row.code, row]));
 
     for (const entity of entities) {
       const row = byCode.get(entity.code);
+      // A compliance parameter (E. coli) maps its non-conformity rate, not the mean: one
+      // high count would otherwise dominate a commune whose water is mostly clean.
+      const value = row
+        ? param.compliance
+          ? row.taux_non_conformite
+          : row.valeur_moyenne
+        : null;
       instance.setFeatureState(
         { source: SOURCE_ID, id: entity.code },
         {
-          value: row?.valeur_moyenne ?? null,
+          value: value ?? null,
           sample_count: row?.nb_mesures ?? null,
           latest_sample: row?.derniere_mesure ?? null,
+          non_compliant_count: row?.nb_non_conformes ?? null,
         },
       );
     }
@@ -427,7 +437,8 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
           <MapPopup
             details={details}
             classes={PARAMETERS[parameterId].classes}
-            unit={unit}
+            unit={PARAMETERS[parameterId].compliance?.unit ?? unit}
+            compliance={PARAMETERS[parameterId].compliance !== undefined}
             level={level}
           />,
           popupContent.current,

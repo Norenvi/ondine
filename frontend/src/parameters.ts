@@ -11,6 +11,10 @@ export type ValueClass = {
   min: number;
   label: string;
   color: string;
+  /** Overrides the computed "from - to" text in the legend. For a class whose bound is a
+   * sentinel rather than a readable figure (the compliance ramp splits exactly-zero from
+   * any-detection at min: 1e-9). */
+  rangeLabel?: string;
 };
 
 export type ParameterId =
@@ -59,6 +63,12 @@ export type ParameterDef = {
   unitOrder: string[];
   defaultUnitId: string;
   unitsHelp: UnitsHelp;
+  /** Present when the parameter is aggregated as a non-compliance rate (share of samples
+   * whose stored value exceeds `threshold`) rather than a pooled mean. The choropleth value
+   * is then a percentage 0..100, displayed in `unit`, and `classes` are percentage bands.
+   * See ECOLI_CLASSES and the backend commune_valeur.nb_non_conformes column. `units` still
+   * holds the raw per-sample unit, used by the measurement table/chart in CommunePanel. */
+  compliance?: { threshold: number; unit: Unit };
 };
 
 /**
@@ -223,31 +233,46 @@ const CHLORE_LIBRE_UNITS: Record<string, Unit> = {
 };
 
 /**
- * E. coli is a fecal-contamination indicator with a strict binding limit: <=0 n/100mL,
- * any detection at all is out of norm (SANDRE 1449, see Hub'Eau libelle_qualite_parametre).
- * The value here is the commune's AVG across its measurements this year, like every other
- * parameter (not a compliance rate), so it is almost always 0 and any positive average
- * already means at least one sample detected E. coli. Bounds above 0 are set from the
- * actual distribution of non-zero detections in the 2026 dataset (median 2, p90 20 n/100mL),
- * to separate an isolated low-count detection from a larger contamination event, rather than
- * treating "any detection" as one undifferentiated class.
+ * E. coli is a fecal-contamination indicator with a binding limit of 0/100mL: any detection
+ * at all is a regulatory non-conformity (SANDRE 1449). A pooled mean is the wrong summary,
+ * one high count on a single sample would swamp a commune whose water is otherwise clean,
+ * while the regulatory question is binary per sample. So E. coli is aggregated as a
+ * non-compliance rate (see ParameterDef.compliance and the backend commune_valeur
+ * .nb_non_conformes column): the choropleth value is the percentage of the period's samples
+ * that detected E. coli, 0 to 100. The exactly-zero class is split from any-detection with a
+ * sentinel bound (min: 1e-9), since one detection in a hundred samples is still not
+ * "compliant". Bands above it separate an isolated incident from recurring contamination.
  */
 const ECOLI_CLASSES: ValueClass[] = [
-  { min: 0, label: "Non détectée", color: "#1a9850" },
-  { min: 0.01, label: "Détection ponctuelle (hors norme)", color: "#fee08b" },
-  { min: 0.5, label: "Détections répétées (hors norme)", color: "#fc8d59" },
-  { min: 2, label: "Contamination significative (hors norme)", color: "#d73027" },
-  { min: 10, label: "Contamination majeure (hors norme)", color: "#7f0000" },
+  { min: 0, label: "Aucune détection", color: "#1a9850", rangeLabel: "0 %" },
+  { min: 1e-9, label: "Détection isolée", color: "#fee08b", rangeLabel: "0 - 5 %" },
+  { min: 5, label: "Détections récurrentes", color: "#fc8d59", rangeLabel: "5 - 15 %" },
+  { min: 15, label: "Contamination fréquente", color: "#d73027", rangeLabel: "15 - 30 %" },
+  { min: 30, label: "Contamination chronique", color: "#7f0000", rangeLabel: "> 30 %" },
 ];
 
+/**
+ * Raw per-sample unit, used by CommunePanel's measurement table and chart: the individual
+ * readings stay counts in n/100mL. The choropleth, legend and summary use COMPLIANCE_UNIT
+ * (the aggregated value is a percentage, not a count).
+ */
 const ECOLI_UNITS: Record<string, Unit> = {
   n100ml: {
     id: "n100ml",
     symbol: "n/100mL",
     name: "nombre pour 100 mL",
     fromBaseUnit: 1,
-    decimals: 2,
+    decimals: 0,
   },
+};
+
+/** Display unit for a non-compliance rate: the aggregated value is already a percentage. */
+const COMPLIANCE_UNIT: Unit = {
+  id: "pct",
+  symbol: "%",
+  name: "% de prélèvements non conformes",
+  fromBaseUnit: 1,
+  decimals: 1,
 };
 
 /**
@@ -598,10 +623,13 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
     units: ECOLI_UNITS,
     unitOrder: ["n100ml"],
     defaultUnitId: "n100ml",
+    compliance: { threshold: 0, unit: COMPLIANCE_UNIT },
     unitsHelp: {
       lines: {
         n100ml:
-          "n/100 mL : nombre de bactéries E. coli détectées, limite de qualité (contraignante) 0/100 mL, indicateur de contamination fécale",
+          "n/100 mL : nombre de bactéries E. coli détectées dans un prélèvement, limite de qualité (contraignante) 0/100 mL, indicateur de contamination fécale",
+        pct:
+          "% : part des prélèvements de la période où E. coli a été détecté (toute détection est une non-conformité), plutôt qu'une moyenne des comptages qu'un seul prélèvement élevé fausserait",
       },
       sourceLabel: "Wikipédia : Escherichia coli",
       sourceUrl: "https://fr.wikipedia.org/wiki/Escherichia_coli",
@@ -993,6 +1021,9 @@ export function contrastText(background: string): string {
  */
 export function formatRange(classes: ValueClass[], index: number, unit: Unit): string {
   const current = classes[index];
+  if (current.rangeLabel !== undefined) {
+    return current.rangeLabel;
+  }
   const next = classes[index + 1];
   const from = formatValue(current.min, unit);
   return next ? `${from} - ${formatValue(next.min, unit)}` : `> ${from}`;
