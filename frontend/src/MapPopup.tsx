@@ -70,8 +70,20 @@ export function MapPopup({ details, classes, unit, level, compliance = false, on
         </Typography>
       ) : (
         <Box>
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <Typography variant="h6" component="p" sx={{ lineHeight: 1.2 }}>
+          {/* Wrap the chip to its own line when a long class name ("Contamination très
+              fréquente") leaves no room beside the value, rather than squeezing the value
+              (which would break "30 %" across lines) or stretching the chip. */}
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 0.5 }}
+          >
+            <Typography
+              variant="h6"
+              component="p"
+              sx={{ lineHeight: 1.2, whiteSpace: "nowrap", flexShrink: 0 }}
+            >
               {formatValueWithUnit(value, unit)}
             </Typography>
             <Chip

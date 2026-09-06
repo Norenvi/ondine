@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
+import Link from "@mui/material/Link";
 import Select, { type SelectChangeEvent } from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
@@ -32,7 +33,7 @@ import { convertFromBase, formatValueWithUnit, type Unit } from "./units";
 type ViewMode = "table" | "chart";
 
 /**
- * "compact" (map-side CommunePanel, ~600px): date / valeur / réseau only, so the columns
+ * "compact" (map-side CommunePanel, ~720px): date / valeur / réseau only, so the columns
  * stay readable. "full" (Leaderboard drill-down, full screen): adds the per-sample class
  * and the distributor, and is where future extra fields land.
  */
@@ -240,6 +241,28 @@ export function CommuneMesures({
     ? `${limit.binding ? "Limite de qualité" : "Référence de qualité"} : ${limit.label}`
     : null;
 
+  // Direct link to the same rows straight from the upstream source (a one commune / one
+  // parameter / one year query is exactly the one-off use the Hub'Eau API is meant for; bulk
+  // loading goes through the offline pipeline instead). Scoped by `code_reseau` on the UDIs
+  // actually feeding this commune, not `code_commune`: Hub'Eau's `code_commune` filter only
+  // returns prelevements whose sampling point is physically in the commune, whereas this
+  // panel (like the choropleth) shows every prelevement of the networks that distribute water
+  // here, which is the honest evidence base for the commune. Falls back to `code_commune`
+  // before the measurements load or if none carry a network (PLV-fallback rows).
+  const hubeauUrl = useMemo(() => {
+    const reseaux = [
+      ...new Set((mesures ?? []).map((m) => m.cdreseau).filter((c): c is string => c !== null)),
+    ];
+    const scope =
+      reseaux.length > 0 ? `code_reseau=${reseaux.join(",")}` : `code_commune=${code}`;
+    return (
+      `https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis` +
+      `?${scope}&code_parametre=${parameter.sandreCode}` +
+      `&date_min_prelevement=${annee}-01-01&date_max_prelevement=${annee}-12-31` +
+      `&size=500&sort=desc`
+    );
+  }, [mesures, code, parameter.sandreCode, annee]);
+
   return (
     <>
       {summary === null || valueClass === null ? (
@@ -262,23 +285,29 @@ export function CommuneMesures({
               }}
             />
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-            {summary.nonCompliant !== null
-              ? `${summary.nonCompliant} / ${summary.count} prélèvements non conformes, dernière le ${formatDate(summary.latest)}`
-              : `${summary.count} mesure(s), dernière le ${formatDate(summary.latest)}`}
-          </Typography>
-          {limitLine !== null && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              {limitLine}
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", mt: 0.75 }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              {summary.nonCompliant !== null
+                ? `${summary.nonCompliant} / ${summary.count} prélèvements non conformes, dernière le ${formatDate(summary.latest)}`
+                : `${summary.count} mesure(s), dernière le ${formatDate(summary.latest)}`}
             </Typography>
-          )}
+            {limitLine !== null && (
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: "right" }}>
+                {limitLine}
+              </Typography>
+            )}
+          </Stack>
         </Box>
       )}
 
       <Stack
         direction="row"
         spacing={1}
-        sx={{ alignItems: "center", justifyContent: "space-between", mt: 2 }}
+        sx={{ alignItems: "center", justifyContent: "space-between", mt: 1 }}
       >
         <Typography variant="subtitle2">
           Relevés {annee}
@@ -405,9 +434,26 @@ export function CommuneMesures({
 
       <Divider sx={{ my: 1.5 }} />
 
-      <Typography variant="caption" color="text.secondary">
-        Code INSEE : {code}
-      </Typography>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap" }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          Code INSEE : {code}
+        </Typography>
+        <Link
+          variant="caption"
+          href={hubeauUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          color="text.secondary"
+          underline="hover"
+          title="Relevés bruts Hub'Eau (JSON) : ce paramètre, cette année, sur les réseaux qui desservent la commune."
+        >
+          Source : Hub'Eau
+        </Link>
+      </Stack>
     </>
   );
 }

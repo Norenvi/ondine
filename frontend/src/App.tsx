@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 
 import { fetchAnnees, type NiveauZoom } from "./api";
 import { CommunePanel } from "./CommunePanel";
-import type { EntitySummary } from "./entities";
+import { loadEntityIndex, type EntitySummary } from "./entities";
 import { Leaderboard } from "./Leaderboard";
 import { Legend } from "./Legend";
 import { MapView } from "./MapView";
@@ -14,6 +14,7 @@ import { Timeline } from "./Timeline";
 import { TopBar } from "./TopBar";
 import { useColorMode } from "./theme";
 import type { UnitId } from "./units";
+import { readUrlState, writeUrlState } from "./urlState";
 import { ZonePanel } from "./ZonePanel";
 
 const DEFAULT_PARAMETER_ID: ParameterId = "durete";
@@ -22,26 +23,94 @@ const FALLBACK_ANNEE = 2026;
 
 function App() {
   const { mode, theme, toggleMode } = useColorMode();
-  const [parameterId, setParameterId] = useState<ParameterId>(DEFAULT_PARAMETER_ID);
-  const [unitId, setUnitId] = useState<UnitId>(PARAMETERS[DEFAULT_PARAMETER_ID].defaultUnitId);
-  const [selectedEntity, setSelectedEntity] = useState<EntitySummary | null>(null);
-  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
-  const [level, setLevel] = useState<NiveauZoom>("commune");
-  const [annees, setAnnees] = useState<number[]>([]);
-  const [annee, setAnnee] = useState<number>(FALLBACK_ANNEE);
+  // Parsed once: the URL is our own replaceState output afterwards, never external navigation.
+  const [initialUrl] = useState(readUrlState);
 
-  // One fetch on mount: populate the timeline ticks and land on the most recent year rather
-  // than the hardcoded fallback. On failure the fallback stays and the timeline stays hidden.
+  const [parameterId, setParameterId] = useState<ParameterId>(
+    initialUrl.parametre ?? DEFAULT_PARAMETER_ID,
+  );
+  const [unitId, setUnitId] = useState<UnitId>(() => {
+    const pid = initialUrl.parametre ?? DEFAULT_PARAMETER_ID;
+    return initialUrl.unite !== undefined && initialUrl.unite in PARAMETERS[pid].units
+      ? initialUrl.unite
+      : PARAMETERS[pid].defaultUnitId;
+  });
+  const [selectedEntity, setSelectedEntity] = useState<EntitySummary | null>(null);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(initialUrl.classement ?? false);
+  // Commune drilled inside the leaderboard, mirrored here only so it can go in the URL.
+  const [leaderboardCommune, setLeaderboardCommune] = useState<string | null>(
+    initialUrl.classement ? initialUrl.entite ?? null : null,
+  );
+  const [level, setLevel] = useState<NiveauZoom>(initialUrl.niveau ?? "commune");
+  const [annees, setAnnees] = useState<number[]>([]);
+  const [annee, setAnnee] = useState<number>(initialUrl.annee ?? FALLBACK_ANNEE);
+
+  // Hold the first URL write until a URL-provided map selection has been resolved, so we
+  // don't briefly rewrite the address bar without its ?entite= while the index loads. Not
+  // needed for a leaderboard drill (?classement=1&entite=): that code is passed down as-is.
+  const restorePendingRef = useRef(
+    initialUrl.entite !== undefined && !initialUrl.classement,
+  );
+
+  // One fetch on mount: populate the timeline ticks and land on the most recent year, unless
+  // the URL asked for a specific (and still available) year. On failure the fallback stays.
   useEffect(() => {
     fetchAnnees()
       .then((years) => {
-        if (years.length > 0) {
-          setAnnees(years);
-          setAnnee(years[years.length - 1]);
+        if (years.length === 0) {
+          return;
         }
+        setAnnees(years);
+        setAnnee(
+          initialUrl.annee !== undefined && years.includes(initialUrl.annee)
+            ? initialUrl.annee
+            : years[years.length - 1],
+        );
       })
       .catch(() => undefined);
-  }, []);
+  }, [initialUrl]);
+
+  // Restore a shared map selection: look the entity code up in its level's index, then select
+  // it. A ?classement= link carries its commune differently (see leaderboardCommune), skip.
+  useEffect(() => {
+    if (initialUrl.entite === undefined || initialUrl.classement) {
+      return;
+    }
+    let cancelled = false;
+    loadEntityIndex(initialUrl.niveau ?? "commune")
+      .then((entities) => {
+        if (cancelled) {
+          return;
+        }
+        const match = entities.find((entity) => entity.code === initialUrl.entite);
+        if (match !== undefined) {
+          setSelectedEntity(match);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          restorePendingRef.current = false;
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialUrl]);
+
+  // Mirror the shareable state into the query string on every change.
+  useEffect(() => {
+    if (restorePendingRef.current) {
+      return;
+    }
+    writeUrlState({
+      parametre: parameterId,
+      annee,
+      unite: unitId === PARAMETERS[parameterId].defaultUnitId ? undefined : unitId,
+      niveau: level,
+      entite: leaderboardOpen ? leaderboardCommune ?? undefined : selectedEntity?.code,
+      classement: leaderboardOpen,
+    });
+  }, [parameterId, unitId, level, annee, selectedEntity, leaderboardOpen, leaderboardCommune]);
 
   function handleSelectEntity(entity: EntitySummary) {
     setLeaderboardOpen(false);
@@ -59,7 +128,13 @@ function App() {
 
   function handleOpenLeaderboard() {
     setSelectedEntity(null);
+    setLeaderboardCommune(null);
     setLeaderboardOpen(true);
+  }
+
+  function handleCloseLeaderboard() {
+    setLeaderboardCommune(null);
+    setLeaderboardOpen(false);
   }
 
   function handleParameterChange(next: ParameterId) {
@@ -100,6 +175,7 @@ function App() {
               parameterId={parameterId}
               unit={unit}
               annee={annee}
+              onParameterChange={handleParameterChange}
               onClose={() => setSelectedEntity(null)}
             />
           )}
@@ -115,13 +191,18 @@ function App() {
           )}
           {leaderboardOpen && (
             <Leaderboard
+              key={level}
+              level={level}
               parameterId={parameterId}
               unit={unit}
               annee={annee}
               annees={annees}
               onAnneeChange={setAnnee}
+              onSelectEntity={handleSelectEntity}
               onSelectCommune={handleDrillIntoCommune}
-              onClose={() => setLeaderboardOpen(false)}
+              initialDrilledCommune={leaderboardCommune}
+              onDrilledCommuneChange={setLeaderboardCommune}
+              onClose={handleCloseLeaderboard}
             />
           )}
         </Box>

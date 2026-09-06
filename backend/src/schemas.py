@@ -43,6 +43,27 @@ class MesureOut(BaseModel):
     valeur_libelle: str | None
 
 
+class BulletinParametreOut(BaseModel):
+    """One parameter's year for a single commune, summarised from the raw `mesure` rows.
+    `moyenne` is the same pooled mean the choropleth colours by (identical to SUM/SUM over
+    commune_valeur for this commune), kept consistent across map, bulletin and detail panel;
+    min / max / derniere_valeur are actual readings that show the spread it hides. The
+    frontend colours the row from `moyenne` (or, for a threshold parameter, from
+    nb_non_conformes / nb_mesures).
+    """
+
+    parametre: str
+    nb_mesures: int
+    minimum: float
+    maximum: float
+    moyenne: float
+    derniere_valeur: float
+    derniere_date: datetime.date
+    # From commune_valeur: count of samples over the parameter's binding threshold, already
+    # computed by the pipeline. None for every parameter with no threshold.
+    nb_non_conformes: int | None = None
+
+
 class CommuneOut(BaseModel):
     code_insee: str
     nom: str

@@ -12,6 +12,8 @@ export type LevelConfig = {
   idProperty: string;
   nameProperty: string;
   label: string;
+  /** Plural, lower-case, for headings like "Comparer les communes" / "Comparer les régions". */
+  pluralLabel: string;
   /** For the search placeholder, e.g. "une commune", "un EPCI": gender/article vary by level. */
   searchLabel: string;
 };
@@ -22,6 +24,7 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
     idProperty: "code_insee",
     nameProperty: "nom_officiel",
     label: "Commune",
+    pluralLabel: "communes",
     searchLabel: "une commune",
   },
   epci: {
@@ -29,6 +32,7 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
     idProperty: "code",
     nameProperty: "nom",
     label: "EPCI",
+    pluralLabel: "EPCI",
     searchLabel: "un EPCI",
   },
   departement: {
@@ -36,6 +40,7 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
     idProperty: "code",
     nameProperty: "nom",
     label: "Département",
+    pluralLabel: "départements",
     searchLabel: "un département",
   },
   region: {
@@ -43,6 +48,7 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
     idProperty: "code",
     nameProperty: "nom",
     label: "Région",
+    pluralLabel: "régions",
     searchLabel: "une région",
   },
 };

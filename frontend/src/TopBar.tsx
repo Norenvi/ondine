@@ -39,7 +39,6 @@ import GrassIcon from "@mui/icons-material/Grass";
 import HardwareIcon from "@mui/icons-material/Hardware";
 import HexagonIcon from "@mui/icons-material/Hexagon";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
-import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import MenuIcon from "@mui/icons-material/Menu";
 import OpacityIcon from "@mui/icons-material/Opacity";
@@ -52,6 +51,7 @@ import ScatterPlotIcon from "@mui/icons-material/ScatterPlot";
 import ScienceIcon from "@mui/icons-material/Science";
 import SearchIcon from "@mui/icons-material/Search";
 import SpaIcon from "@mui/icons-material/Spa";
+import TableRowsIcon from "@mui/icons-material/TableRows";
 import TerrainIcon from "@mui/icons-material/Terrain";
 import TollIcon from "@mui/icons-material/Toll";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
@@ -301,7 +301,7 @@ export function TopBar({
             handleSelectEntity(value);
           }
         }}
-        sx={{ width: { xs: "100%", sm: 260 } }}
+        sx={{ width: { xs: "100%", sm: 340 } }}
         renderInput={(params) => (
           <TextField
             {...params}
@@ -319,7 +319,7 @@ export function TopBar({
                   </>
                 ),
                 sx: {
-                  fontSize: "0.8125rem",
+                  fontSize: "0.75rem",
                   py: 0.5,
                   alignItems: "center",
                   "& input": { py: 0.25 },
@@ -335,9 +335,9 @@ export function TopBar({
       {/* Leaderboard + theme toggle stay grouped in their own row, right-aligned, even
           when everything above them has stacked into a column. */}
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: { xs: "flex-end", sm: "flex-start" } }}>
-        <Tooltip title="Classement des communes">
+        <Tooltip title="Comparer les communes">
           <IconButton size="small" onClick={handleOpenLeaderboard}>
-            <LeaderboardIcon fontSize="small" />
+            <TableRowsIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         {/* Divider only separates within the row layout: on mobile the two controls are

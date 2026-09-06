@@ -98,6 +98,10 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
   const anneeRef = useRef(annee);
   anneeRef.current = annee;
   const [details, setDetails] = useState<CommuneDetails | null>(null);
+  // Flips true once the "load" handler has added the source/layers. The selection effect
+  // waits on it: a permalink restores `selectedEntity` before the map is ready, and without
+  // this the fitBounds would be skipped and never retried.
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,6 +243,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
     instance.on("load", () => {
       addLayersForLevel(instance, levelRef.current, parameterIdRef.current);
       void applyAggregation(instance, parameterIdRef.current, levelRef.current, anneeRef.current);
+      setMapReady(true);
     });
 
     instance.on("mousemove", FILL_LAYER_ID, (event: MapLayerMouseEvent) => {
@@ -391,19 +396,22 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
     // sits along the bottom edge instead of a side, so the padding moves from right to
     // bottom instead of shrinking the same side further.
     const isMobile = window.innerWidth < 600;
+    const isCommune = selectedEntity.level === "commune";
     const padding = isMobile
       ? { top: 40, bottom: window.innerHeight * 0.55 + 20, left: 20, right: 20 }
-      : selectedEntity.level === "commune"
-        ? { top: 80, bottom: 80, left: 90, right: 600 }
+      : isCommune
+        ? { top: 80, bottom: 80, left: 90, right: 760 }
         : { top: 80, bottom: 80, left: 80, right: 800 };
     instance.fitBounds(
       [
         [minLon, minLat],
         [maxLon, maxLat],
       ],
-      { padding, duration: 800 },
+      // Cap the zoom on a commune so it keeps some surrounding context instead of filling
+      // the viewport; the wide right padding pushes it left of the detail panel.
+      { padding, duration: 800, maxZoom: isMobile || !isCommune ? undefined : 10.5 },
     );
-  }, [selectedEntity, level]);
+  }, [selectedEntity, level, mapReady]);
 
   return (
     <>

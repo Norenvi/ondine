@@ -30,6 +30,20 @@ export type AggregationOut = {
   nb_non_conformes: number | null;
 };
 
+/** One parameter's year for a single commune. `moyenne` is the same pooled mean the
+ * choropleth colours by; min / max / derniere_valeur are real samples showing the spread.
+ * `nb_non_conformes` is non-null only for a parameter with a binding threshold. */
+export type BulletinParametreOut = {
+  parametre: string;
+  nb_mesures: number;
+  minimum: number;
+  maximum: number;
+  moyenne: number;
+  derniere_valeur: number;
+  derniere_date: string;
+  nb_non_conformes: number | null;
+};
+
 export type NiveauZoom = "commune" | "epci" | "departement" | "region";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -55,6 +69,29 @@ export async function fetchCommuneMesures(
     throw new Error(`Echec du chargement des releves (${response.status})`);
   }
   return response.json() as Promise<MesureOut[]>;
+}
+
+/** Every parameter measured in one commune during `annee`, one summary row each. Backs the
+ * commune Bulletin. Cached per (commune, annee) so switching the focused parameter, or
+ * reopening a bulletin, costs no request. */
+const bulletinCache = new Map<string, BulletinParametreOut[]>();
+
+export async function fetchCommuneBulletin(
+  codeInsee: string,
+  annee: number,
+): Promise<BulletinParametreOut[]> {
+  const key = `${codeInsee}:${annee}`;
+  const cached = bulletinCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const response = await fetch(`${API_BASE}/communes/${codeInsee}/bulletin?annee=${annee}`);
+  if (!response.ok) {
+    throw new Error(`Echec du chargement du bulletin (${response.status})`);
+  }
+  const data = (await response.json()) as BulletinParametreOut[];
+  bulletinCache.set(key, data);
+  return data;
 }
 
 // The choropleth refetches on every parameter/level/year change, and scrubbing the timeline

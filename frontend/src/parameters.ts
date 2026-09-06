@@ -261,13 +261,16 @@ const CHLORE_LIBRE_UNITS: Record<string, Unit> = {
  * that detected E. coli, 0 to 100. The exactly-zero class is split from any-detection with a
  * sentinel bound (min: 1e-9), since one detection in a hundred samples is still not
  * "compliant". Bands above it separate an isolated incident from recurring contamination.
+ * The band thresholds (5 / 15 / 30 %) and their labels are the project's own interpretation,
+ * not an official scale: French regulation only defines the binary per-sample limit (0/100mL),
+ * there is no regulatory classification of a per-commune non-conformity rate.
  */
 const ECOLI_CLASSES: ValueClass[] = [
   { min: 0, label: "Aucune détection", color: "#1a9850", rangeLabel: "0 %" },
   { min: 1e-9, label: "Détection isolée", color: "#fee08b", rangeLabel: "0 - 5 %" },
   { min: 5, label: "Détections récurrentes", color: "#fc8d59", rangeLabel: "5 - 15 %" },
   { min: 15, label: "Contamination fréquente", color: "#d73027", rangeLabel: "15 - 30 %" },
-  { min: 30, label: "Contamination chronique", color: "#7f0000", rangeLabel: "> 30 %" },
+  { min: 30, label: "Contamination très fréquente", color: "#7f0000", rangeLabel: "> 30 %" },
 ];
 
 /**
@@ -1197,6 +1200,17 @@ export function buildFillColorExpression(classes: ValueClass[]): unknown[] {
     NO_DATA_COLOR,
     ["step", ["feature-state", "value"], first.color, ...steps],
   ];
+}
+
+/** Reverse of ParameterDef.apiCode: resolve a backend parameter code to its registry id. */
+export const PARAMETER_BY_API_CODE: Record<string, ParameterId> = Object.fromEntries(
+  (Object.keys(PARAMETERS) as ParameterId[]).map((id) => [PARAMETERS[id].apiCode, id]),
+);
+
+/** The default display unit for a parameter (its base unit unless a nicer one is preferred). */
+export function defaultUnit(id: ParameterId): Unit {
+  const def = PARAMETERS[id];
+  return def.units[def.defaultUnitId];
 }
 
 /** The class a value (in the parameter's base unit) falls into. */
