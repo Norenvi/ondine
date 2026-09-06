@@ -118,7 +118,9 @@ function App() {
               parameterId={parameterId}
               unit={unit}
               annee={annee}
-              onSelectCommune={handleSelectEntity}
+              annees={annees}
+              onAnneeChange={setAnnee}
+              onSelectCommune={handleDrillIntoCommune}
               onClose={() => setLeaderboardOpen(false)}
             />
           )}

@@ -21,13 +21,17 @@ import Toolbar from "@mui/material/Toolbar";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
+import AirIcon from "@mui/icons-material/Air";
+import BiotechIcon from "@mui/icons-material/Biotech";
 import BlurOnIcon from "@mui/icons-material/BlurOn";
 import BoltIcon from "@mui/icons-material/Bolt";
 import BubbleChartIcon from "@mui/icons-material/BubbleChart";
 import BuildIcon from "@mui/icons-material/Build";
 import CloseIcon from "@mui/icons-material/Close";
+import CompostIcon from "@mui/icons-material/Compost";
 import CoronavirusIcon from "@mui/icons-material/Coronavirus";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
+import DiamondIcon from "@mui/icons-material/Diamond";
 import FilterVintageIcon from "@mui/icons-material/FilterVintage";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import GrainIcon from "@mui/icons-material/Grain";
@@ -49,6 +53,7 @@ import ScienceIcon from "@mui/icons-material/Science";
 import SearchIcon from "@mui/icons-material/Search";
 import SpaIcon from "@mui/icons-material/Spa";
 import TerrainIcon from "@mui/icons-material/Terrain";
+import TollIcon from "@mui/icons-material/Toll";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
 import WavesIcon from "@mui/icons-material/Waves";
 
@@ -95,6 +100,8 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   durete: <OpacityIcon fontSize="small" />,
   ph: <ScienceIcon fontSize="small" />,
   nitrates: <GrassIcon fontSize="small" />,
+  nitrites: <CompostIcon fontSize="small" />,
+  ammonium: <AirIcon fontSize="small" />,
   conductivite: <BoltIcon fontSize="small" />,
   turbidite: <BlurOnIcon fontSize="small" />,
   chlore_libre: <SanitizerIcon fontSize="small" />,
@@ -113,9 +120,12 @@ const PARAMETER_ICONS: Record<ParameterId, ReactElement> = {
   plomb: <PlumbingIcon fontSize="small" />,
   cuivre: <HardwareIcon fontSize="small" />,
   arsenic: <TerrainIcon fontSize="small" />,
+  selenium: <DiamondIcon fontSize="small" />,
+  nickel: <TollIcon fontSize="small" />,
   bisphenol_a: <RecyclingIcon fontSize="small" />,
   thm: <BubbleChartIcon fontSize="small" />,
   pesticides: <PestControlIcon fontSize="small" />,
+  pfas: <BiotechIcon fontSize="small" />,
 };
 
 /** App-wide top bar: title on the left, commune search + parameter picker on the right. */

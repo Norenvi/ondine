@@ -22,10 +22,27 @@ EXPECTED_UNIT = "°f"
 
 
 # Only the columns the pipeline actually reads. RESULT is ~940 MB uncompressed with ~17
-# columns; restricting the parse to these four is the difference between a multi-GB and a
+# columns; restricting the parse to this handful is the difference between a multi-GB and a
 # few-hundred-MB DataFrame (matters on the 7 GB WSL box), and cuts parse time too.
-RESULT_USECOLS = ["referenceprel", "cdparametre", "cdunitereferencesiseeaux", "valtraduite"]
-PLV_USECOLS = ["referenceprel", "cdreseau", "dateprel", "inseecommuneprinc", "conclusionprel"]
+RESULT_USECOLS = [
+    "referenceprel",
+    "cdparametre",
+    "cdunitereferencesiseeaux",
+    "valtraduite",
+    # Raw analytical result string ("<0,5", ">100", "N.M.", "traces"...). valtraduite
+    # normalises these to a number (a "<0,5" becomes 0), which hides that the value was
+    # below the quantification limit rather than a true zero; kept to show the qualifier.
+    "rqana",
+]
+PLV_USECOLS = [
+    "referenceprel",
+    "cdreseau",
+    "dateprel",
+    "inseecommuneprinc",
+    "conclusionprel",
+    "distrlib",
+    "moalib",
+]
 COM_UDI_USECOLS = ["cdreseau", "nomreseau", "inseecommune"]
 
 

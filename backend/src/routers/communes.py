@@ -40,6 +40,7 @@ def get_commune_mesures(
             Mesure.valeur,
             Mesure.cdreseau,
             Reseau.nom.label("nom_reseau"),
+            Reseau.distributeur,
             Mesure.conclusion,
             Mesure.valeur_libelle,
         )

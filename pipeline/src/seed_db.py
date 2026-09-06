@@ -17,7 +17,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
-from sqlalchemy import create_engine, insert, text
+from sqlalchemy import create_engine, func, insert, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -41,6 +41,8 @@ PARAMETERS = [
     {"cdparametre_sandre": "1345", "code": "durete", "nom": "Titre Hydrotimetrique", "unite": "°f"},
     {"cdparametre_sandre": "1302", "code": "ph", "nom": "pH", "unite": "unité pH"},
     {"cdparametre_sandre": "1340", "code": "nitrates", "nom": "Nitrates (en NO3)", "unite": "mg/L"},
+    {"cdparametre_sandre": "1339", "code": "nitrites", "nom": "Nitrites (en NO2)", "unite": "mg/L"},
+    {"cdparametre_sandre": "1335", "code": "ammonium", "nom": "Ammonium (en NH4)", "unite": "mg/L"},
     {"cdparametre_sandre": "1303", "code": "conductivite", "nom": "Conductivite a 25C", "unite": "µS/cm"},
     {"cdparametre_sandre": "1295", "code": "turbidite", "nom": "Turbidite nephelometrique", "unite": "NFU"},
     {"cdparametre_sandre": "1398", "code": "chlore_libre", "nom": "Chlore libre", "unite": "mg(Cl2)/L"},
@@ -64,6 +66,8 @@ PARAMETERS = [
     {"cdparametre_sandre": "1382", "code": "plomb", "nom": "Plomb", "unite": "µg/L"},
     {"cdparametre_sandre": "1392", "code": "cuivre", "nom": "Cuivre", "unite": "mg(Cu)/L"},
     {"cdparametre_sandre": "1369", "code": "arsenic", "nom": "Arsenic", "unite": "µg/L"},
+    {"cdparametre_sandre": "1385", "code": "selenium", "nom": "Sélénium", "unite": "µg/L"},
+    {"cdparametre_sandre": "1386", "code": "nickel", "nom": "Nickel", "unite": "µg/L"},
     {"cdparametre_sandre": "2766", "code": "bisphenol_a", "nom": "Bisphénol A", "unite": "µg/L"},
     {
         "cdparametre_sandre": "2036",
@@ -75,6 +79,12 @@ PARAMETERS = [
         "cdparametre_sandre": "6276",
         "code": "pesticides",
         "nom": "Total des pesticides analysés",
+        "unite": "µg/L",
+    },
+    {
+        "cdparametre_sandre": "8847",
+        "code": "pfas",
+        "nom": "Somme des 20 PFAS",
         "unite": "µg/L",
     },
 ]
@@ -145,10 +155,25 @@ def resolve_movement_chains(direct: dict[str, str]) -> dict[str, str]:
     return resolved
 
 
-def load_reseaux(com_udi: pd.DataFrame) -> pd.DataFrame:
-    """One row per distribution network (cdreseau/nomreseau are consistently 1:1 in the data)."""
+def _dominant_by_reseau(plv: pd.DataFrame, column: str) -> pd.Series:
+    """Most frequent non-null value of `column` per cdreseau. distrlib/moalib are near, but
+    not perfectly, constant per network (~13% of cdreseau carry more than one distrlib over a
+    year), so pick the modal one rather than an arbitrary row."""
+    subset = plv.loc[plv[column].notna(), ["cdreseau", column]]
+    counts = subset.groupby(["cdreseau", column]).size().reset_index(name="n")
+    counts = counts.sort_values("n", ascending=False).drop_duplicates(subset="cdreseau")
+    return counts.set_index("cdreseau")[column]
+
+
+def load_reseaux(com_udi: pd.DataFrame, plv: pd.DataFrame) -> pd.DataFrame:
+    """One row per distribution network (cdreseau/nomreseau are consistently 1:1 in the data),
+    enriched with the modal distributor (distrlib) and infrastructure owner (moalib) seen for
+    that network in PLV. Both stay NULL for networks absent from PLV."""
     reseaux = com_udi[["cdreseau", "nomreseau"]].drop_duplicates(subset="cdreseau")
-    return reseaux.rename(columns={"nomreseau": "nom"})
+    reseaux = reseaux.rename(columns={"nomreseau": "nom"})
+    reseaux["distributeur"] = reseaux["cdreseau"].map(_dominant_by_reseau(plv, "distrlib"))
+    reseaux["maitre_ouvrage"] = reseaux["cdreseau"].map(_dominant_by_reseau(plv, "moalib"))
+    return reseaux.astype(object).where(reseaux.notna(), None)
 
 
 def truncate_all(session: Session) -> None:
@@ -257,6 +282,22 @@ MESURE_COPY_COLUMNS = (
     "valeur_libelle",
     "annee",
 )
+
+
+_PLAIN_NUMBER_RE = r"\s*[+-]?\d+(?:[.,]\d+)?\s*"
+
+
+def derive_valeur_libelle(rqana: pd.Series) -> pd.Series:
+    """Keep the raw analytical string only when it carries something the number does not:
+    a "<" / ">" qualifier or free text ("N.M.", "traces"). A plain number is redundant with
+    `valeur` and stays NULL, so the column only grows for the qualified minority of rows.
+    """
+    text = rqana.astype("string").str.strip()
+    informative = (
+        text.notna() & (text != "") & ~text.str.fullmatch(_PLAIN_NUMBER_RE)
+    ).fillna(False)
+    out = text.where(informative).astype(object)
+    return out.where(out.notna(), None)
 
 
 def drop_mesure_indexes(session: Session) -> list[str]:
@@ -410,7 +451,7 @@ def main() -> None:
         """
         zip_path = RAW_DIR / f"dis-{year}.zip"
         result, plv, com_udi = transform.load_hubeau_tables(zip_path, wanted_sandre)
-        yield "__reseaux__", load_reseaux(com_udi)
+        yield "__reseaux__", load_reseaux(com_udi, plv)
 
         for param in parameters:
             filtered = transform.filter_parameter(
@@ -447,12 +488,25 @@ def main() -> None:
 
         rebuild_ddl = drop_mesure_indexes(session)
 
-        reseau_stmt = pg_insert(Reseau).on_conflict_do_nothing(index_elements=["cdreseau"])
+        _reseau_base = pg_insert(Reseau)
+        # A network reappears in every archive it serves water in. `years` is ascending, so
+        # updating on conflict lets the most recent archive win for nom/distributeur; COALESCE
+        # keeps an earlier non-null value when the later archive has none for that field.
+        reseau_stmt = _reseau_base.on_conflict_do_update(
+            index_elements=["cdreseau"],
+            set_={
+                "nom": _reseau_base.excluded.nom,
+                "distributeur": func.coalesce(
+                    _reseau_base.excluded.distributeur, Reseau.distributeur
+                ),
+                "maitre_ouvrage": func.coalesce(
+                    _reseau_base.excluded.maitre_ouvrage, Reseau.maitre_ouvrage
+                ),
+            },
+        )
         total_mesures = 0
         for year in years:
             for code, frame in iter_year(year):
-                # A network serving water across several years reappears in every archive:
-                # keep the first row seen for its cdreseau (its PK) and skip the rest.
                 if code == "__reseaux__":
                     session.execute(reseau_stmt, frame.to_dict("records"))
                     continue
@@ -466,7 +520,7 @@ def main() -> None:
                     }
                 )
                 mesures["parametre_id"] = parametre_ids[code]
-                mesures["valeur_libelle"] = None
+                mesures["valeur_libelle"] = derive_valeur_libelle(mesures["rqana"])
                 mesures["annee"] = year
 
                 # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see

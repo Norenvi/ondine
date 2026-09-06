@@ -93,6 +93,13 @@ class Reseau(Base):
 
     cdreseau: Mapped[str] = mapped_column(primary_key=True)
     nom: Mapped[str]
+    # Water distributor (DIS_PLV.distrlib) and infrastructure owner (moalib), the entities a
+    # resident would contact. Held here rather than on `mesure` (a ~60-char string over 114M
+    # rows) since both are near-constant per network; the pipeline stores the most recent
+    # year's value seen for the cdreseau. Nullable: PLV-fallback measurements carry no
+    # network, and a few networks never appear in PLV.
+    distributeur: Mapped[str | None]
+    maitre_ouvrage: Mapped[str | None]
 
     mesures: Mapped[list[Mesure]] = relationship(back_populates="reseau")
 
@@ -124,12 +131,15 @@ class Mesure(Base):
     valeur: Mapped[float]
     # Hub'Eau's own human-readable verdict for the sampling event (conclusionprel), shared by
     # every parametre measured on that same referenceprel. Nullable: a handful of PLV rows
-    # carry no conclusion text.
+    # carry no conclusion text. No longer shown in the UI (it judges the whole sample, not
+    # this parameter row); kept for a future per-sample detail view.
     conclusion: Mapped[str | None] = mapped_column(Text)
-    # Human-readable form of `valeur`, for a future parametre where the number itself would
-    # not be the natural reading (a categorical Hub'Eau flag rather than a measurement).
-    # NULL for every parametre currently seeded, where `valeur` already reads directly in
-    # its unit.
+    # Raw analytical result string (DIS_RESULT.rqana) when it carries a qualifier the number
+    # loses: "<0,5" / ">100" (below/above the quantification limit, which `valeur` flattens
+    # to a plain figure) or free text ("N.M." not measured, "traces"). NULL when rqana is a
+    # plain number, i.e. for the bulk-mineral parameters; mostly set for trace contaminants
+    # (pesticides, metals, PFAS) where most samples read "<LQ". The frontend shows it in
+    # place of the formatted number.
     valeur_libelle: Mapped[str | None] = mapped_column(Text)
 
     parametre: Mapped[Parametre] = relationship(back_populates="mesures")

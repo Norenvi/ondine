@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
+import Link from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
+import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import ReportGmailerrorredOutlinedIcon from "@mui/icons-material/ReportGmailerrorredOutlined";
 import { DataGrid, useGridApiRef, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
 
+import { CommuneMesures } from "./CommuneMesures";
 import { EmptyState, PanelSkeleton } from "./PanelStates";
+import { TimelineSlider } from "./Timeline";
 
 import { fetchAggregation, type AggregationOut } from "./api";
-import { departmentFromInseeCode } from "./communes";
+import { communeLabel, departmentFromInseeCode } from "./communes";
 import { loadEntityIndex, type EntitySummary } from "./entities";
 import { formatDate } from "./format";
 import { classifyValue, contrastText, PARAMETERS, type ParameterId } from "./parameters";
@@ -20,6 +28,8 @@ type LeaderboardProps = {
   parameterId: ParameterId;
   unit: Unit;
   annee: number;
+  annees: number[];
+  onAnneeChange: (annee: number) => void;
   onSelectCommune: (entity: EntitySummary) => void;
   onClose: () => void;
 };
@@ -27,10 +37,19 @@ type LeaderboardProps = {
 type Row = AggregationOut & { departement: string };
 
 /**
- * Every commune ranked by the active parameter, in the same visual language as
- * CommunePanel but much bigger: this is a browsing tool, not a detail card.
+ * Full-screen two-level data browser: every commune ranked by the active parameter, then
+ * (on row click) that commune's individual samples via the shared CommuneMesures view. The
+ * ranking grid stays mounted while drilled in, so its sort/filter/page survive "back".
  */
-export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose }: LeaderboardProps) {
+export function Leaderboard({
+  parameterId,
+  unit,
+  annee,
+  annees,
+  onAnneeChange,
+  onSelectCommune,
+  onClose,
+}: LeaderboardProps) {
   const parameter = PARAMETERS[parameterId];
   // A compliance parameter (E. coli) is ranked by its non-conformity rate, not the mean.
   const compliance = parameter.compliance;
@@ -40,6 +59,7 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
   const [aggregation, setAggregation] = useState<AggregationOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [communeIndex, setCommuneIndex] = useState<Map<string, EntitySummary>>(new Map());
+  const [drilledCode, setDrilledCode] = useState<string | null>(null);
 
   useEffect(() => {
     loadEntityIndex("commune").then((entities) => {
@@ -156,85 +176,171 @@ export function Leaderboard({ parameterId, unit, annee, onSelectCommune, onClose
   );
 
   function handleRowClick(params: GridRowParams<Row>) {
-    const commune = communeIndex.get(params.row.code);
-    if (commune !== undefined) {
-      onSelectCommune(commune);
-    }
+    setDrilledCode(params.row.code);
   }
+
+  const drilledEntity = drilledCode === null ? null : communeIndex.get(drilledCode) ?? null;
+  const drilledRow = drilledCode === null ? null : rows.find((row) => row.code === drilledCode) ?? null;
+  const drilledName = drilledEntity?.name ?? drilledRow?.nom ?? drilledCode ?? "";
 
   return (
     <Paper
-      elevation={4}
+      elevation={0}
+      square
       sx={{
         position: "absolute",
-        // Full-width bottom sheet on a phone screen (fixed height instead of top+bottom
-        // pinning, which would otherwise cover the whole viewport) rather than the desktop
-        // side panel.
-        top: { xs: "auto", sm: 16 },
-        // Desktop bottom offset clears the centered Timeline (bottom: 24, ~48px tall).
-        bottom: { xs: 0, sm: 88 },
-        right: { xs: 0, sm: 56 },
-        left: { xs: 0, sm: "auto" },
-        height: { xs: "55vh", sm: "auto" },
-        zIndex: 1,
-        p: 2,
-        width: { xs: "100%", sm: 800 },
-        maxWidth: { xs: "100%", sm: "calc(100vw - 72px)" },
-        borderRadius: { xs: 0, sm: 1 },
+        inset: 0,
+        zIndex: 2,
         display: "flex",
         flexDirection: "column",
+        bgcolor: "background.default",
       }}
     >
-      <IconButton
-        size="small"
-        onClick={onClose}
-        aria-label="Fermer"
-        sx={{ position: "absolute", top: 8, right: 8 }}
+      <Box
+        sx={{
+          width: "100%",
+          maxWidth: 1100,
+          mx: "auto",
+          flexGrow: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          p: { xs: 2, sm: 3 },
+        }}
       >
-        <CloseIcon fontSize="small" />
-      </IconButton>
-      <Typography variant="subtitle1" sx={{ pr: 4 }}>
-        Classement des communes
-      </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {parameter.label} {annee}, triées par{" "}
-        {compliance ? "part de prélèvements non conformes" : "valeur moyenne"}
-      </Typography>
+        {drilledCode === null ? (
+          <>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: "flex-start", justifyContent: "space-between" }}
+            >
+              <Box>
+                <Typography variant="h6">Classement des communes</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {parameter.label} {annee}, triées par{" "}
+                  {compliance ? "part de prélèvements non conformes" : "valeur moyenne"}
+                </Typography>
+              </Box>
+              <IconButton size="small" onClick={onClose} aria-label="Fermer">
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
 
-      {error !== null && (
-        <EmptyState
-          icon={<ReportGmailerrorredOutlinedIcon />}
-          title={error}
-          detail="Réessayez dans un instant"
-          severity="error"
-          sx={{ flexGrow: 1 }}
+            {error !== null && (
+              <EmptyState
+                icon={<ReportGmailerrorredOutlinedIcon />}
+                title={error}
+                detail="Réessayez dans un instant"
+                severity="error"
+                sx={{ flexGrow: 1 }}
+              />
+            )}
+
+            {error === null && aggregation === null && (
+              <PanelSkeleton rows={14} sx={{ flexGrow: 1, mt: 2 }} />
+            )}
+          </>
+        ) : (
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ alignItems: "center", justifyContent: "space-between" }}
+          >
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
+              <IconButton
+                size="small"
+                onClick={() => setDrilledCode(null)}
+                aria-label="Retour au classement"
+              >
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle1" noWrap>
+                  {drilledEntity !== null || drilledRow !== null
+                    ? communeLabel(drilledName, drilledCode)
+                    : drilledName}
+                </Typography>
+                <Link
+                  component="button"
+                  variant="caption"
+                  color="text.secondary"
+                  underline="hover"
+                  onClick={() => setDrilledCode(null)}
+                >
+                  Classement des communes
+                </Link>
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexShrink: 0 }}>
+              <Button
+                size="small"
+                startIcon={<PlaceOutlinedIcon />}
+                disabled={drilledEntity === null}
+                onClick={() => {
+                  if (drilledEntity !== null) {
+                    onSelectCommune(drilledEntity);
+                  }
+                }}
+              >
+                Voir sur la carte
+              </Button>
+              <IconButton size="small" onClick={onClose} aria-label="Fermer">
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          </Stack>
+        )}
+
+        {/* Grid stays mounted while drilled in (just hidden) so sort/filter/page persist. */}
+        {aggregation !== null && (
+          <Box
+            sx={{
+              flexGrow: 1,
+              minHeight: 0,
+              mt: 2,
+              display: drilledCode === null ? "flex" : "none",
+              flexDirection: "column",
+            }}
+          >
+            <DataGrid
+              apiRef={apiRef}
+              rows={rows}
+              columns={columns}
+              getRowId={(row) => row.code}
+              density="compact"
+              onRowClick={handleRowClick}
+              initialState={{
+                sorting: { sortModel: [{ field: valueField, sort: "asc" }] },
+                pagination: { paginationModel: { pageSize: 100 } },
+              }}
+              pageSizeOptions={[25, 50, 100]}
+              sx={{ flexGrow: 1, "& .MuiDataGrid-row": { cursor: "pointer" } }}
+            />
+          </Box>
+        )}
+
+        {drilledCode !== null && (
+          <Box sx={{ flexGrow: 1, minHeight: 0, mt: 1, overflowY: "auto" }}>
+            <CommuneMesures
+              commune={{ code: drilledCode, name: drilledName }}
+              parameterId={parameterId}
+              unit={unit}
+              annee={annee}
+              variant="full"
+            />
+          </Box>
+        )}
+
+        {/* Year picker under the table, so ranking and drill-down both stay navigable in
+            time while the map (and its own Timeline) are covered by this full-screen view. */}
+        <TimelineSlider
+          annees={annees}
+          annee={annee}
+          onChange={onAnneeChange}
+          sx={{ alignSelf: "center", width: { xs: "100%", sm: 460 }, maxWidth: "100%", px: 2.5, mt: 1 }}
         />
-      )}
-
-      {error === null && aggregation === null && (
-        <PanelSkeleton rows={12} sx={{ flexGrow: 1 }} />
-      )}
-
-      {aggregation !== null && (
-        <DataGrid
-          apiRef={apiRef}
-          rows={rows}
-          columns={columns}
-          getRowId={(row) => row.code}
-          density="compact"
-          onRowClick={handleRowClick}
-          initialState={{
-            sorting: { sortModel: [{ field: valueField, sort: "asc" }] },
-            pagination: { paginationModel: { pageSize: 100 } },
-          }}
-          pageSizeOptions={[25, 50, 100]}
-          sx={{
-            mt: 1.5,
-            flexGrow: 1,
-            "& .MuiDataGrid-row": { cursor: "pointer" },
-          }}
-        />
-      )}
+      </Box>
     </Paper>
   );
 }

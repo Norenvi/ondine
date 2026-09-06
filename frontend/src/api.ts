@@ -12,6 +12,7 @@ export type MesureOut = {
   valeur: number;
   cdreseau: string | null;
   nom_reseau: string | null;
+  distributeur: string | null;
   conclusion: string | null;
   valeur_libelle: string | null;
 };

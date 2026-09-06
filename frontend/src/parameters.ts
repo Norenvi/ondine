@@ -17,6 +17,20 @@ export type ValueClass = {
   rangeLabel?: string;
 };
 
+/**
+ * French drinking-water regulatory value for a parameter, in its base (stored) unit.
+ * `binding` distinguishes a "limite de qualité" (health-based, mandatory) from a
+ * "référence de qualité" (aesthetic/indicative). Kept in one table rather than on each
+ * ParameterDef so every limit can be audited side by side against the source texts.
+ * `label` is pre-formatted (comma decimals, unit) for direct display.
+ */
+export type RegulatoryLimit = {
+  min?: number;
+  max?: number;
+  binding: boolean;
+  label: string;
+};
+
 export type ParameterId =
   | "durete"
   | "ph"
@@ -36,12 +50,17 @@ export type ParameterId =
   | "potassium"
   | "fluorures"
   | "bore"
+  | "nitrites"
+  | "ammonium"
   | "plomb"
   | "cuivre"
   | "arsenic"
+  | "selenium"
+  | "nickel"
   | "bisphenol_a"
   | "thm"
-  | "pesticides";
+  | "pesticides"
+  | "pfas";
 
 export type UnitsHelp = {
   /** Keyed by unit id: only the currently selected unit's line is shown in the tooltip. */
@@ -507,6 +526,80 @@ const PESTICIDES_UNITS: Record<string, Unit> = {
   ugL: { id: "ugL", symbol: "µg/L", name: "microgrammes par litre (µg/L)", fromBaseUnit: 1, decimals: 3 },
 };
 
+/**
+ * Nitrites (en NO2), limite de qualité (binding) 0,5 mg/L. Short-lived intermediate of the
+ * nitrogen cycle: unlike nitrates it points at a treatment or contamination problem right
+ * now rather than diffuse agricultural pressure. Same low-to-high concern direction.
+ */
+const NITRITES_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 0.1, label: "Modérée", color: "#91cf60" },
+  { min: 0.2, label: "Élevée", color: "#fee08b" },
+  { min: 0.35, label: "Très élevée", color: "#fc8d59" },
+  { min: 0.5, label: "Hors norme", color: "#d73027" },
+];
+
+const NITRITES_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 2 },
+};
+
+/**
+ * Ammonium (en NH4), référence de qualité (non-binding) 0,1 mg/L: an indicator of raw-water
+ * contamination or of failing nitrification during treatment rather than a direct health
+ * limit, hence the softer top label. Natural groundwater background can already sit near
+ * the reference in reducing aquifers.
+ */
+const AMMONIUM_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 0.05, label: "Modérée", color: "#91cf60" },
+  { min: 0.1, label: "Au-delà de la référence", color: "#fee08b" },
+  { min: 0.4, label: "Élevée", color: "#fc8d59" },
+  { min: 0.8, label: "Très élevée", color: "#d73027" },
+];
+
+const AMMONIUM_UNITS: Record<string, Unit> = {
+  mgL: { id: "mgL", symbol: "mg/L", name: "milligrammes par litre (mg/L)", fromBaseUnit: 1, decimals: 2 },
+};
+
+/**
+ * Sélénium, limite de qualité (binding) 20 µg/L (EU 2020/2184, transposed 2023). Naturally
+ * present in some sedimentary/volcanic aquifers, so like arsenic it is expected to cluster
+ * geographically. Same 20/40/70/100% bound-fraction scheme as the other metals.
+ */
+const SELENIUM_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 4, label: "Modérée", color: "#91cf60" },
+  { min: 8, label: "Élevée", color: "#fee08b" },
+  { min: 14, label: "Très élevée", color: "#fc8d59" },
+  { min: 20, label: "Hors norme", color: "#d73027" },
+];
+
+const SELENIUM_UNITS: Record<string, Unit> = {
+  ugL: { id: "ugL", symbol: "µg/L", name: "microgrammes par litre (µg/L)", fromBaseUnit: 1, decimals: 1 },
+};
+
+/** Nickel, same limite de qualité (20 µg/L) and scale as sélénium; mostly a
+ * plumbing-corrosion signal (nickel-plated fittings, stainless steel) like plomb/cuivre. */
+const NICKEL_CLASSES: ValueClass[] = SELENIUM_CLASSES;
+const NICKEL_UNITS: Record<string, Unit> = SELENIUM_UNITS;
+
+/**
+ * Somme des 20 PFAS (SANDRE 8847), limite de qualité (binding) 0,10 µg/L, mandatory
+ * monitoring in France since 12 January 2026 (little to no data before ~2023). Persistent
+ * synthetic contaminants; bounds are 20/40/70/100% of the 0,10 µg/L limit.
+ */
+const PFAS_CLASSES: ValueClass[] = [
+  { min: 0, label: "Faible", color: "#1a9850" },
+  { min: 0.02, label: "Modérée", color: "#91cf60" },
+  { min: 0.04, label: "Élevée", color: "#fee08b" },
+  { min: 0.07, label: "Très élevée", color: "#fc8d59" },
+  { min: 0.1, label: "Hors norme", color: "#d73027" },
+];
+
+const PFAS_UNITS: Record<string, Unit> = {
+  ugL: { id: "ugL", symbol: "µg/L", name: "microgrammes par litre (µg/L)", fromBaseUnit: 1, decimals: 3 },
+};
+
 export const PARAMETERS: Record<ParameterId, ParameterDef> = {
   durete: {
     id: "durete",
@@ -560,6 +653,40 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       },
       sourceLabel: "Wikipédia : Nitrate",
       sourceUrl: "https://fr.wikipedia.org/wiki/Nitrate",
+    },
+  },
+  nitrites: {
+    id: "nitrites",
+    apiCode: "nitrites",
+    label: "Nitrites",
+    sandreCode: "1339",
+    classes: NITRITES_CLASSES,
+    units: NITRITES_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : milligrammes de nitrites (NO₂⁻) par litre, limite de qualité (contraignante) 0,5 mg/L, signale une contamination ou un défaut de traitement récents",
+      },
+      sourceLabel: "Wikipédia : Nitrite",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Nitrite",
+    },
+  },
+  ammonium: {
+    id: "ammonium",
+    apiCode: "ammonium",
+    label: "Ammonium",
+    sandreCode: "1335",
+    classes: AMMONIUM_CLASSES,
+    units: AMMONIUM_UNITS,
+    unitOrder: ["mgL"],
+    defaultUnitId: "mgL",
+    unitsHelp: {
+      lines: {
+        mgL: "mg/L : milligrammes d'ammonium (NH₄⁺) par litre, référence de qualité (non contraignante) 0,1 mg/L, indicateur de pollution de la ressource ou de nitrification incomplète",
+      },
+      sourceLabel: "Wikipédia : Ion ammonium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Ion_ammonium",
     },
   },
   conductivite: {
@@ -874,6 +1001,40 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       sourceUrl: "https://fr.wikipedia.org/wiki/Arsenic",
     },
   },
+  selenium: {
+    id: "selenium",
+    apiCode: "selenium",
+    label: "Sélénium",
+    sandreCode: "1385",
+    classes: SELENIUM_CLASSES,
+    units: SELENIUM_UNITS,
+    unitOrder: ["ugL"],
+    defaultUnitId: "ugL",
+    unitsHelp: {
+      lines: {
+        ugL: "µg/L : limite de qualité (contraignante) 20 µg/L, le plus souvent d'origine géologique (aquifères sédimentaires)",
+      },
+      sourceLabel: "Wikipédia : Sélénium",
+      sourceUrl: "https://fr.wikipedia.org/wiki/S%C3%A9l%C3%A9nium",
+    },
+  },
+  nickel: {
+    id: "nickel",
+    apiCode: "nickel",
+    label: "Nickel",
+    sandreCode: "1386",
+    classes: NICKEL_CLASSES,
+    units: NICKEL_UNITS,
+    unitOrder: ["ugL"],
+    defaultUnitId: "ugL",
+    unitsHelp: {
+      lines: {
+        ugL: "µg/L : limite de qualité (contraignante) 20 µg/L, provient surtout de la corrosion de robinetterie et raccords (chromage, inox)",
+      },
+      sourceLabel: "Wikipédia : Nickel",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Nickel",
+    },
+  },
   bisphenol_a: {
     id: "bisphenol_a",
     apiCode: "bisphenol_a",
@@ -925,6 +1086,55 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       sourceUrl: "https://fr.wikipedia.org/wiki/Pesticide",
     },
   },
+  pfas: {
+    id: "pfas",
+    apiCode: "pfas",
+    label: "PFAS (somme de 20)",
+    sandreCode: "8847",
+    classes: PFAS_CLASSES,
+    units: PFAS_UNITS,
+    unitOrder: ["ugL"],
+    defaultUnitId: "ugL",
+    unitsHelp: {
+      lines: {
+        ugL: "µg/L : somme de 20 composés perfluoroalkylés, limite de qualité (contraignante) 0,10 µg/L, surveillance obligatoire depuis janvier 2026 (peu de données avant 2023)",
+      },
+      sourceLabel: "Wikipédia : Composé perfluoré",
+      sourceUrl: "https://fr.wikipedia.org/wiki/Compos%C3%A9_perfluor%C3%A9_et_polyfluor%C3%A9",
+    },
+  },
+};
+
+/**
+ * Values in each parameter's base (stored) unit. Absent for parameters with no French
+ * threshold (dureté, calcium, magnésium, potassium) and for E. coli (handled through the
+ * compliance / non-conformity path). Sources: arrêté du 11 janvier 2007 modifié and the
+ * per-parameter notes in `unitsHelp` above.
+ */
+export const REGULATORY_LIMITS: Partial<Record<ParameterId, RegulatoryLimit>> = {
+  ph: { min: 6.5, max: 9, binding: true, label: "6,5 à 9 unité pH" },
+  conductivite: { min: 200, max: 1100, binding: true, label: "200 à 1100 µS/cm" },
+  turbidite: { max: 2, binding: true, label: "2 NFU" },
+  nitrates: { max: 50, binding: true, label: "50 mg/L" },
+  nitrites: { max: 0.5, binding: true, label: "0,5 mg/L" },
+  ammonium: { max: 0.1, binding: false, label: "0,1 mg/L" },
+  selenium: { max: 20, binding: true, label: "20 µg/L" },
+  nickel: { max: 20, binding: true, label: "20 µg/L" },
+  pfas: { max: 0.1, binding: true, label: "0,10 µg/L" },
+  chlorures: { max: 250, binding: false, label: "250 mg/L" },
+  sulfates: { max: 250, binding: false, label: "250 mg/L" },
+  sodium: { max: 200, binding: false, label: "200 mg/L" },
+  fer: { max: 200, binding: false, label: "200 µg/L" },
+  aluminium: { max: 200, binding: false, label: "200 µg/L" },
+  manganese: { max: 50, binding: true, label: "50 µg/L" },
+  fluorures: { max: 1.5, binding: true, label: "1,5 mg/L" },
+  bore: { max: 1, binding: true, label: "1 mg/L" },
+  plomb: { max: 10, binding: true, label: "10 µg/L" },
+  cuivre: { max: 2, binding: true, label: "2 mg/L" },
+  arsenic: { max: 10, binding: true, label: "10 µg/L" },
+  bisphenol_a: { max: 2.5, binding: true, label: "2,5 µg/L" },
+  thm: { max: 100, binding: true, label: "100 µg/L" },
+  pesticides: { max: 0.5, binding: true, label: "0,5 µg/L (total)" },
 };
 
 export type ParameterGroup = {
@@ -945,7 +1155,7 @@ export const PARAMETER_GROUPS: ParameterGroup[] = [
   },
   {
     label: "Azote",
-    ids: ["nitrates"],
+    ids: ["nitrates", "nitrites", "ammonium"],
   },
   {
     label: "Minéraux et dureté",
@@ -957,11 +1167,11 @@ export const PARAMETER_GROUPS: ParameterGroup[] = [
   },
   {
     label: "Métaux lourds",
-    ids: ["plomb", "cuivre", "arsenic"],
+    ids: ["plomb", "cuivre", "arsenic", "selenium", "nickel"],
   },
   {
     label: "Composés organiques",
-    ids: ["thm", "bisphenol_a"],
+    ids: ["thm", "bisphenol_a", "pfas"],
   },
   {
     label: "Pesticides",

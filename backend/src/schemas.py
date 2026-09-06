@@ -38,6 +38,7 @@ class MesureOut(BaseModel):
     valeur: float
     cdreseau: str | None
     nom_reseau: str | None
+    distributeur: str | None
     conclusion: str | None
     valeur_libelle: str | None
 
