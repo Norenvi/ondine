@@ -1,9 +1,19 @@
+import { useEffect, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Link from "@mui/material/Link";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
@@ -13,12 +23,60 @@ type AboutPanelProps = {
 };
 
 type Section = {
+  id: string;
+  navLabel: string;
   title: string;
   body: React.ReactNode;
 };
 
+type SandreParametre = {
+  code: string;
+  nom: string;
+  unite: string;
+  description: string;
+};
+
+/** Mirrors PARAMETERS in pipeline/src/seed_db.py (cdparametre_sandre/nom/unite). Description is
+ * the official Sandre definition (field DfParametre, https://api.sandre.eaufrance.fr/referentiels/v1/par/{code}.json),
+ * trimmed for long entries (substance enumerations, full microbiological characterization) but
+ * not reworded otherwise, so it matches what the linked fiche states. Reference link is the
+ * Sandre identifier URI for the parameter, https://id.eaufrance.fr/par/{code}. */
+const SANDRE_PARAMETRES: SandreParametre[] = [
+  { code: "1345", nom: "Dureté de l'eau", unite: "°f", description: "Somme des concentrations calciques (en sels de calcium) et magnésiennes (en sels de magnésium)." },
+  { code: "1302", nom: "pH", unite: "unité pH", description: "pH du support considéré (activité des ions H+ selon la loi de Nernst)." },
+  { code: "1340", nom: "Nitrates", unite: "mg/L", description: "Substance chimique de formule brute NO3-." },
+  { code: "1339", nom: "Nitrites", unite: "mg/L", description: "Substance chimique de formule brute NO2-." },
+  { code: "1335", nom: "Ammonium", unite: "mg/L", description: "Teneur en formes ammoniacales dans l'eau (ion ammonium NH4+ et ammoniac non ionisé NH3)." },
+  { code: "1303", nom: "Conductivité", unite: "µS/cm", description: "Conductivité électrique de l'eau mesurée ou corrigée à 25°C." },
+  { code: "1295", nom: "Turbidité", unite: "NFU", description: "Réduction de la transparence d'un liquide due à la présence de matières non dissoutes, mesurée à un angle de 90° par rapport à la lumière incidente." },
+  { code: "1398", nom: "Chlore libre", unite: "mg(Cl2)/L", description: "Chlore présent dans l'eau sous la forme d'acide hypochloreux (HOCl), d'ion hypochlorite (ClO-) ou de chlore élémentaire dissous (Cl2d)." },
+  { code: "1337", nom: "Chlorures", unite: "mg/L", description: "Teneur en ions chlorures Cl de tous les chlorures dissous dans l'eau." },
+  { code: "1338", nom: "Sulfates", unite: "mg/L", description: "Teneur en ions sulfates SO4-- dissous dans l'eau." },
+  { code: "1374", nom: "Calcium", unite: "mg/L", description: "Quantification de l'élément Calcium pour tout ou partie de ses états (dissous, solide, etc.)." },
+  { code: "1372", nom: "Magnésium", unite: "mg(Mg)/L", description: "Élément chimique de symbole Mg et de numéro atomique 12." },
+  { code: "1393", nom: "Fer total", unite: "µg/L", description: "Quantification de l'élément Fer pour tous ses états (dissous, solide, etc.)." },
+  { code: "1370", nom: "Aluminium total", unite: "µg/L", description: "Élément chimique de symbole Al et de numéro atomique 13." },
+  { code: "1394", nom: "Manganèse total", unite: "µg/L", description: "Quantification de l'élément Manganèse pour tous ses états (dissous, solide, etc.)." },
+  { code: "1375", nom: "Sodium", unite: "mg/L", description: "Quantification de l'élément Sodium pour tous ses états (dissous, solide, etc.)." },
+  { code: "1367", nom: "Potassium", unite: "mg/L", description: "Élément chimique de symbole K et de numéro atomique 19." },
+  { code: "7073", nom: "Fluorures", unite: "mg/L", description: "Élément chimique de formule brute F-." },
+  { code: "1362", nom: "Bore", unite: "mg/L", description: "Élément chimique de symbole B et de numéro atomique 5." },
+  { code: "1449", nom: "Escherichia coli", unite: "n/(100mL)", description: "Entérobactérie appartenant au groupe des coliformes thermotolérants, capable de croître en aérobiose à 44°C et d'hydrolyser le MUG." },
+  { code: "1382", nom: "Plomb", unite: "µg/L", description: "Quantification de l'élément Plomb pour tout ou partie de ses états (dissous, solide, etc.)." },
+  { code: "1392", nom: "Cuivre", unite: "mg(Cu)/L", description: "Quantification de l'élément Cuivre pour tous ses états (dissous, solide, etc.)." },
+  { code: "1369", nom: "Arsenic", unite: "µg/L", description: "Élément chimique de symbole As et de numéro atomique 33." },
+  { code: "1385", nom: "Sélénium", unite: "µg/L", description: "Quantification de l'élément Sélénium pour tout ou partie de ses états (dissous, solide, etc.)." },
+  { code: "1386", nom: "Nickel", unite: "µg/L", description: "Quantification de l'élément Nickel pour tout ou partie de ses états (dissous, solide, etc.)." },
+  { code: "2766", nom: "Bisphénol A", unite: "µg/L", description: "Substance chimique de formule brute C15H16O2, comportant deux fonctions alcool sur deux cycles aromatiques." },
+  { code: "2036", nom: "Trihalométhanes (4 substances)", unite: "µg/L", description: "Somme de 4 paramètres : chloroforme, bromoforme, dibromochlorométhane et bromodichlorométhane." },
+  { code: "6276", nom: "Pesticides (total)", unite: "µg/L", description: "Somme de l'ensemble des pesticides analysés." },
+  { code: "8847", nom: "PFAS (somme de 20)", unite: "µg/L", description: "Somme des 20 PFAS de la directive européenne Eau potable 2020/2184." },
+];
+
 const SECTIONS: Section[] = [
   {
+    id: "presentation",
+    navLabel: "Présentation",
     title: "",
     body: (
       <Typography variant="body2">
@@ -35,6 +93,8 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "sources",
+    navLabel: "Sources des données",
     title: "Sources des données",
     body: (
       <>
@@ -130,6 +190,8 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "commune",
+    navLabel: "Ce que représente une commune",
     title: "Ce que représente une commune",
     body: (
       <>
@@ -158,6 +220,8 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "udi",
+    navLabel: "Pourquoi pas l'UDI ?",
     title: "Pourquoi ne pas afficher un niveau UDI, plus pertinent que la commune ?",
     body: (
       <Typography variant="body2">
@@ -170,12 +234,14 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "methode",
+    navLabel: "Méthode de calcul",
     title: "Méthode de calcul",
     body: (
       <>
         <Typography variant="body2" sx={{ mb: 2 }}>
-          Sauf mention contraire, la valeur affichée est une moyenne combinée : elle est
-          calculée sur l'ensemble des relevés individuels de la zone, et non une moyenne de
+          Sauf mention contraire, la valeur affichée au survol de la carte et en haut de chaque tableau de relevé 
+          est une moyenne combinée : elle est calculée sur l'ensemble des relevés individuels de la zone, et non une moyenne de
           moyennes (qui donnerait autant de poids à une commune avec 2 relevés qu'à une
           commune avec 10 000). Cela vaut aussi bien au niveau commune qu'aux niveaux EPCI,
           département et région.
@@ -198,6 +264,8 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "sans-seuil",
+    navLabel: "Paramètres sans seuil",
     title: "Paramètres sans seuil sanitaire",
     body: (
       <Typography variant="body2">
@@ -220,6 +288,8 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "limites",
+    navLabel: "Limites connues",
     title: "Limites connues",
     body: (
       <>
@@ -290,14 +360,68 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: "sandre",
+    navLabel: "Codes SANDRE",
+    title: "Codes SANDRE des paramètres",
+    body: (
+      <>
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          Chaque paramètre est identifié dans les données Hub'Eau par un code SANDRE
+          (Service d'Administration Nationale des Données et Référentiels sur l'Eau), le
+          référentiel national qui normalise la codification des données sur l'eau en France.
+          Le lien "Référence" pointe vers la fiche officielle du paramètre sur{" "}
+          <Link href="https://id.eaufrance.fr" target="_blank" rel="noopener">
+            id.eaufrance.fr
+          </Link>{" "}
+          (Sandre), qui en donne la définition normalisée et les méthodes d'analyse.
+        </Typography>
+        <TableContainer sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Paramètre</TableCell>
+                <TableCell>Code SANDRE</TableCell>
+                <TableCell>Unité</TableCell>
+                <TableCell>Description</TableCell>
+                <TableCell>Référence</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {SANDRE_PARAMETRES.map((param) => (
+                <TableRow key={param.code}>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{param.nom}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    <code>{param.code}</code>
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{param.unite}</TableCell>
+                  <TableCell>{param.description}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    <Link
+                      href={`https://id.eaufrance.fr/par/${param.code}`}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      Fiche Sandre
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </>
+    ),
+  },
+  {
+    id: "contact",
+    navLabel: "Contact",
     title: "Contact",
     body: (
       <Typography variant="body2">
-        Pour signaler une erreur ou envoyer une suggestion, envoyer un mail à{" "}
+        Pour signaler une erreur ou proposer une suggestion, vous pouvez envoyer un mail à{" "}
         <Link href="mailto:test@gmail.com">
           test@gmail.com
         </Link>
-        .
       </Typography>
     ),
   },
@@ -306,6 +430,32 @@ const SECTIONS: Section[] = [
 /** Full-screen "about" overlay, matching Leaderboard's shell (Paper inset:0 over the map).
  * Static content, so unlike the leaderboard/map selection it isn't mirrored into the URL. */
 export function AboutPanel({ onClose }: AboutPanelProps) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const sectionElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const [activeId, setActiveId] = useState<string>(SECTIONS[0].id);
+
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting);
+        if (visible.length === 0) return;
+        const topmost = visible.reduce((a, b) =>
+          a.boundingClientRect.top <= b.boundingClientRect.top ? a : b,
+        );
+        setActiveId(topmost.target.id);
+      },
+      { root: container, rootMargin: "0px 0px -70% 0px", threshold: 0 },
+    );
+    sectionElsRef.current.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    sectionElsRef.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <Paper
       elevation={0}
@@ -348,31 +498,89 @@ export function AboutPanel({ onClose }: AboutPanelProps) {
           </IconButton>
         </Stack>
 
-        <Box sx={{ mt: 2, overflowY: "auto", flexGrow: 1, minHeight: 0 }}>
-        <Box sx={{ maxWidth: 900, mx: "auto", px: { xs: 0, sm: 3 } }}>
-          <Typography
-            variant="h5"
-            component="div"
+        <Box
+          sx={{
+            mt: 2,
+            flexGrow: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: { xs: "column", md: "row" },
+            gap: { md: 3 },
+            overflow: "hidden",
+          }}
+        >
+          <Box
+            component="nav"
+            aria-label="Sommaire"
             sx={{
-              fontSize: "1.625rem",
-              fontWeight: 200,
-              letterSpacing: "0.12em",
-              mb: 2,
-              textAlign: "center",
+              display: { xs: "none", md: "block" },
+              width: 240,
+              flexShrink: 0,
+              borderRight: 1,
+              borderColor: "divider",
+              pr: 1,
+              overflowY: "auto",
             }}
           >
-            Ondine
-          </Typography>
-          {SECTIONS.map((section, index) => (
-            <Box key={section.title} sx={{ mb: index < SECTIONS.length - 1 ? 3 : 0 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {section.title}
+            <List dense disablePadding>
+              {SECTIONS.map((section) => (
+                <ListItemButton
+                  key={section.id}
+                  selected={activeId === section.id}
+                  onClick={() => scrollToSection(section.id)}
+                  sx={{ borderRadius: 1, py: 0.5, mb: 0.25 }}
+                >
+                  <ListItemText
+                    slotProps={{
+                      primary: {
+                        variant: "body2",
+                        sx: { lineHeight: 1.3 },
+                      },
+                    }}
+                  >
+                    {section.navLabel}
+                  </ListItemText>
+                </ListItemButton>
+              ))}
+            </List>
+          </Box>
+
+          <Box ref={contentRef} sx={{ overflowY: "auto", flexGrow: 1, minHeight: 0 }}>
+            <Box sx={{ maxWidth: 900, mx: "auto", px: { xs: 0, sm: 3 } }}>
+              <Typography
+                variant="h5"
+                component="div"
+                sx={{
+                  fontSize: "1.625rem",
+                  fontWeight: 200,
+                  letterSpacing: "0.12em",
+                  mb: 2,
+                  textAlign: "center",
+                }}
+              >
+                Ondine
               </Typography>
-              {section.body}
-              {index < SECTIONS.length - 1 && <Divider sx={{ mt: 3 }} />}
+              {SECTIONS.map((section, index) => (
+                <Box
+                  key={section.id}
+                  id={section.id}
+                  ref={(el: HTMLElement | null) => {
+                    if (el) sectionElsRef.current.set(section.id, el);
+                    else sectionElsRef.current.delete(section.id);
+                  }}
+                  sx={{ mb: index < SECTIONS.length - 1 ? 3 : 0, scrollMarginTop: 1 }}
+                >
+                  {section.title && (
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      {section.title}
+                    </Typography>
+                  )}
+                  {section.body}
+                  {index < SECTIONS.length - 1 && <Divider sx={{ mt: 3 }} />}
+                </Box>
+              ))}
             </Box>
-          ))}
-        </Box>
+          </Box>
         </Box>
       </Box>
     </Paper>

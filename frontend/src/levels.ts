@@ -8,7 +8,12 @@
 import type { NiveauZoom } from "./api";
 
 export type LevelConfig = {
+  /** Plain GeoJSON, for the search/bbox index built once in entities.ts. Not used by the map. */
   dataUrl: string;
+  /** PMTiles archive of the same geometry, for the map source (see build_tiles.py). */
+  tilesUrl: string;
+  /** tippecanoe -l layer name inside tilesUrl; must match MapView's vector source-layer. */
+  sourceLayer: string;
   idProperty: string;
   nameProperty: string;
   label: string;
@@ -21,6 +26,8 @@ export type LevelConfig = {
 export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
   commune: {
     dataUrl: "/data/communes_durete.geojson",
+    tilesUrl: "/data/communes_durete.pmtiles",
+    sourceLayer: "communes",
     idProperty: "code_insee",
     nameProperty: "nom_officiel",
     label: "Commune",
@@ -29,6 +36,8 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
   },
   epci: {
     dataUrl: "/data/epci.geojson",
+    tilesUrl: "/data/epci.pmtiles",
+    sourceLayer: "epci",
     idProperty: "code",
     nameProperty: "nom",
     label: "EPCI",
@@ -37,6 +46,8 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
   },
   departement: {
     dataUrl: "/data/departement.geojson",
+    tilesUrl: "/data/departement.pmtiles",
+    sourceLayer: "departement",
     idProperty: "code",
     nameProperty: "nom",
     label: "Département",
@@ -45,6 +56,8 @@ export const LEVEL_CONFIG: Record<NiveauZoom, LevelConfig> = {
   },
   region: {
     dataUrl: "/data/region.geojson",
+    tilesUrl: "/data/region.pmtiles",
+    sourceLayer: "region",
     idProperty: "code",
     nameProperty: "nom",
     label: "Région",

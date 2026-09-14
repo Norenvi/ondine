@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import Box from "@mui/material/Box";
 import GlobalStyles from "@mui/material/GlobalStyles";
 import {
+  addProtocol,
   Map as MapLibreMap,
   NavigationControl,
   Popup,
@@ -12,6 +13,14 @@ import {
   type MapLayerMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Protocol as PMTilesProtocol } from "pmtiles";
+
+// Registers "pmtiles://" as a source URL scheme MapLibre can read: the choropleth geometry
+// ships as PMTiles (single static file, HTTP range requests), not a plain GeoJSON blob, so
+// the browser only fetches the tiles for the current viewport/zoom instead of parsing the
+// whole country upfront. Module-level and unconditional: cheap, and every MapView instance
+// (including a remount in dev's StrictMode) needs the scheme registered before addSource.
+addProtocol("pmtiles", new PMTilesProtocol().tile);
 
 // Only needed for the production build: Vite bundles maplibre-gl's own code into our chunk
 // there, so its default worker URL (computed from its own import.meta.url at runtime)
@@ -153,6 +162,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       fetchAggregation(forLevel, param.apiCode, forAnnee),
     ]);
     const byCode = new Map(aggregation.map((row) => [row.code, row]));
+    const sourceLayer = LEVEL_CONFIG[forLevel].sourceLayer;
 
     for (const entity of entities) {
       const row = byCode.get(entity.code);
@@ -164,7 +174,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
           : row.valeur_moyenne
         : null;
       instance.setFeatureState(
-        { source: SOURCE_ID, id: entity.code },
+        { source: SOURCE_ID, sourceLayer, id: entity.code },
         {
           value: value ?? null,
           sample_count: row?.nb_mesures ?? null,
@@ -179,16 +189,18 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
     const config = LEVEL_CONFIG[forLevel];
 
     instance.addSource(SOURCE_ID, {
-      type: "geojson",
-      data: config.dataUrl,
+      type: "vector",
+      url: `pmtiles://${config.tilesUrl}`,
       // Feature-state needs stable ids, and the source data has no numeric id field.
-      promoteId: config.idProperty,
+      // Vector sources key promoteId by source-layer, unlike GeoJSON's plain string form.
+      promoteId: { [config.sourceLayer]: config.idProperty },
     });
 
     instance.addLayer({
       id: FILL_LAYER_ID,
       type: "fill",
       source: SOURCE_ID,
+      "source-layer": config.sourceLayer,
       paint: {
         "fill-color": buildFillColorExpression(PARAMETERS[id].classes) as ExpressionSpecification,
         "fill-opacity": 0.75,
@@ -199,6 +211,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       id: OUTLINE_LAYER_ID,
       type: "line",
       source: SOURCE_ID,
+      "source-layer": config.sourceLayer,
       paint: { "line-color": "#ffffff", "line-width": 0.3, "line-opacity": 0.6 },
     });
 
@@ -207,6 +220,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       id: HOVER_LAYER_ID,
       type: "line",
       source: SOURCE_ID,
+      "source-layer": config.sourceLayer,
       paint: {
         "line-color": "#0b1b33",
         "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
@@ -218,6 +232,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       id: SELECTED_LAYER_ID,
       type: "line",
       source: SOURCE_ID,
+      "source-layer": config.sourceLayer,
       paint: {
         "line-color": "#000000",
         "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
@@ -256,7 +271,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
     const clearHover = () => {
       if (hoveredId.current !== null) {
         instance.setFeatureState(
-          { source: SOURCE_ID, id: hoveredId.current },
+          { source: SOURCE_ID, sourceLayer: LEVEL_CONFIG[levelRef.current].sourceLayer, id: hoveredId.current },
           { hover: false },
         );
         hoveredId.current = null;
@@ -285,8 +300,9 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
 
       clearHover();
       hoveredId.current = feature.id;
-      instance.setFeatureState({ source: SOURCE_ID, id: feature.id }, { hover: true });
-      const state = instance.getFeatureState({ source: SOURCE_ID, id: feature.id });
+      const sourceLayer = LEVEL_CONFIG[levelRef.current].sourceLayer;
+      instance.setFeatureState({ source: SOURCE_ID, sourceLayer, id: feature.id }, { hover: true });
+      const state = instance.getFeatureState({ source: SOURCE_ID, sourceLayer, id: feature.id });
       setDetails(readDetails(feature, state, LEVEL_CONFIG[levelRef.current]));
     });
 
@@ -401,8 +417,10 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       return;
     }
 
+    const sourceLayer = LEVEL_CONFIG[level].sourceLayer;
+
     if (selectedId.current !== null) {
-      instance.setFeatureState({ source: SOURCE_ID, id: selectedId.current }, { selected: false });
+      instance.setFeatureState({ source: SOURCE_ID, sourceLayer, id: selectedId.current }, { selected: false });
       selectedId.current = null;
     }
 
@@ -411,7 +429,7 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
     }
 
     selectedId.current = selectedEntity.code;
-    instance.setFeatureState({ source: SOURCE_ID, id: selectedEntity.code }, { selected: true });
+    instance.setFeatureState({ source: SOURCE_ID, sourceLayer, id: selectedEntity.code }, { selected: true });
 
     const [minLon, minLat, maxLon, maxLat] = selectedEntity.bbox;
     // Padding clears whichever detail panel App.tsx renders for this selection. On a phone
