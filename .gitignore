@@ -17,6 +17,12 @@ frontend/public/data/*
 !frontend/public/data/epci.geojson
 !frontend/public/data/departement.geojson
 !frontend/public/data/region.geojson
+# Same exception for the PMTiles the map itself renders from (build_tiles.py); the plain
+# GeoJSON above stays for entities.ts (search/bbox index only, not map rendering anymore).
+!frontend/public/data/communes_durete.pmtiles
+!frontend/public/data/epci.pmtiles
+!frontend/public/data/departement.pmtiles
+!frontend/public/data/region.pmtiles
 
 # Frontend
 frontend/node_modules/
