@@ -4,6 +4,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 
 import { fetchAnnees, type NiveauZoom } from "./api";
+import { AboutPanel } from "./AboutPanel";
 import { CommunePanel } from "./CommunePanel";
 import { loadEntityIndex, type EntitySummary } from "./entities";
 import { Leaderboard } from "./Leaderboard";
@@ -42,6 +43,7 @@ function App() {
     initialUrl.classement ? initialUrl.entite ?? null : null,
   );
   const [level, setLevel] = useState<NiveauZoom>(initialUrl.niveau ?? "commune");
+  const [aboutOpen, setAboutOpen] = useState(initialUrl.apropos ?? false);
   const [annees, setAnnees] = useState<number[]>([]);
   const [annee, setAnnee] = useState<number>(initialUrl.annee ?? FALLBACK_ANNEE);
 
@@ -109,8 +111,18 @@ function App() {
       niveau: level,
       entite: leaderboardOpen ? leaderboardCommune ?? undefined : selectedEntity?.code,
       classement: leaderboardOpen,
+      apropos: aboutOpen,
     });
-  }, [parameterId, unitId, level, annee, selectedEntity, leaderboardOpen, leaderboardCommune]);
+  }, [
+    parameterId,
+    unitId,
+    level,
+    annee,
+    selectedEntity,
+    leaderboardOpen,
+    leaderboardCommune,
+    aboutOpen,
+  ]);
 
   function handleSelectEntity(entity: EntitySummary) {
     setLeaderboardOpen(false);
@@ -155,6 +167,7 @@ function App() {
           mode={mode}
           onToggleMode={toggleMode}
           onOpenLeaderboard={handleOpenLeaderboard}
+          onOpenAbout={() => setAboutOpen(true)}
           level={level}
           onLevelChange={setLevel}
         />
@@ -205,6 +218,7 @@ function App() {
               onClose={handleCloseLeaderboard}
             />
           )}
+          {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
         </Box>
       </Box>
     </ThemeProvider>

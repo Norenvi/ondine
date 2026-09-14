@@ -38,6 +38,7 @@ import GrainIcon from "@mui/icons-material/Grain";
 import GrassIcon from "@mui/icons-material/Grass";
 import HardwareIcon from "@mui/icons-material/Hardware";
 import HexagonIcon from "@mui/icons-material/Hexagon";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -71,6 +72,7 @@ type TopBarProps = {
   mode: ColorMode;
   onToggleMode: () => void;
   onOpenLeaderboard: () => void;
+  onOpenAbout: () => void;
   level: NiveauZoom;
   onLevelChange: (level: NiveauZoom) => void;
 };
@@ -136,6 +138,7 @@ export function TopBar({
   mode,
   onToggleMode,
   onOpenLeaderboard,
+  onOpenAbout,
   level,
   onLevelChange,
 }: TopBarProps) {
@@ -177,6 +180,11 @@ export function TopBar({
   function handleOpenLeaderboard() {
     setDrawerOpen(false);
     onOpenLeaderboard();
+  }
+
+  function handleOpenAbout() {
+    setDrawerOpen(false);
+    onOpenAbout();
   }
 
   // Parameter picker: a compact Select in the toolbar on desktop, but the mobile drawer has
@@ -343,6 +351,11 @@ export function TopBar({
         {/* Divider only separates within the row layout: on mobile the two controls are
             already visually grouped in their own row, so a divider would just be noise. */}
         <Divider orientation="vertical" flexItem sx={{ my: 1, display: { xs: "none", sm: "block" } }} />
+        <Tooltip title="À propos">
+          <IconButton size="small" onClick={handleOpenAbout}>
+            <InfoOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Tooltip title={isDark ? "Passer en mode clair" : "Passer en mode sombre"}>
           <IconButton size="small" onClick={onToggleMode}>
             {isDark ? (

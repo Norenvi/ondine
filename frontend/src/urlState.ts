@@ -19,6 +19,8 @@ export type UrlState = {
   annee?: number;
   /** Leaderboard ("Comparer les ...") open. */
   classement?: boolean;
+  /** About panel ("A propos") open. */
+  apropos?: boolean;
 };
 
 export function readUrlState(): UrlState {
@@ -49,6 +51,10 @@ export function readUrlState(): UrlState {
     state.classement = true;
   }
 
+  if (params.get("apropos") === "1") {
+    state.apropos = true;
+  }
+
   const entite = params.get("entite");
   if (entite !== null && entite !== "") {
     state.entite = entite;
@@ -64,6 +70,7 @@ export function writeUrlState(state: UrlState): void {
   if (state.unite) params.set("unite", state.unite);
   if (state.niveau && state.niveau !== "commune") params.set("niveau", state.niveau);
   if (state.classement) params.set("classement", "1");
+  if (state.apropos) params.set("apropos", "1");
   if (state.entite) params.set("entite", state.entite);
 
   const query = params.toString();
