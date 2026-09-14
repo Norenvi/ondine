@@ -1,4 +1,4 @@
-:80 {
+ondine-eau.fr {
 	root * /srv
 	encode zstd gzip
 
