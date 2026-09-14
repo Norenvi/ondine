@@ -48,6 +48,29 @@ const POPUP_CLASS = "ondine-popup";
 const INITIAL_CENTER: [number, number] = [2.5, 46.6];
 const INITIAL_ZOOM = 5;
 
+type FitBoundsPadding = { top: number; bottom: number; left: number; right: number };
+
+/** Scales a fixed-pixel fitBounds padding down (preserving its left/right and top/bottom
+ * ratios) so it never leaves zero or negative space inside the container. MapLibre only
+ * guards against padding that already exceeds the container (it warns and no-ops); padding
+ * that lands exactly on the container edge instead sends the target zoom to -Infinity, which
+ * turns into a NaN center a few steps later. */
+function clampFitBoundsPadding(padding: FitBoundsPadding, container: HTMLElement): FitBoundsPadding {
+  const MIN_AVAILABLE = 40;
+  const maxHorizontal = Math.max(container.clientWidth - MIN_AVAILABLE, 0);
+  const maxVertical = Math.max(container.clientHeight - MIN_AVAILABLE, 0);
+  const horizontalTotal = padding.left + padding.right;
+  const verticalTotal = padding.top + padding.bottom;
+  const hScale = horizontalTotal > 0 ? Math.min(maxHorizontal / horizontalTotal, 1) : 1;
+  const vScale = verticalTotal > 0 ? Math.min(maxVertical / verticalTotal, 1) : 1;
+  return {
+    top: padding.top * vScale,
+    bottom: padding.bottom * vScale,
+    left: padding.left * hScale,
+    right: padding.right * hScale,
+  };
+}
+
 function readDetails(
   feature: MapGeoJSONFeature,
   state: Record<string, unknown>,
@@ -402,14 +425,29 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       : isCommune
         ? { top: 80, bottom: 80, left: 90, right: 760 }
         : { top: 80, bottom: 80, left: 80, right: 800 };
+    // These paddings are fixed pixel values sized for the ZonePanel/CommunePanel, not derived
+    // from the container. On a narrow-enough window (ZonePanel's right:800 bites earlier than
+    // CommunePanel's right:760) left+right can reach or exceed the container width, and
+    // MapLibre's fitBounds degrades to a NaN center instead of throwing a catchable error
+    // (zoom collapses to -Infinity, then a symmetric top/bottom padding offset multiplies out
+    // to 0 * Infinity). Scale padding down proportionally so it always leaves real map space.
+    const scaledPadding = clampFitBoundsPadding(padding, instance.getContainer());
+    // Cap the zoom on a commune so it keeps some surrounding context instead of filling the
+    // viewport; the wide right padding pushes it left of the detail panel. maxZoom is omitted
+    // entirely rather than set to `undefined` for the other cases: MapLibre merges options over
+    // its defaults with a `for...in` loop, which treats an explicit `maxZoom: undefined` as
+    // "present" and overwrites its real default (the transform's own maxZoom) with undefined.
+    // `Math.min(zoom, undefined)` is then always NaN, which is exactly the NaN LngLat crash.
     instance.fitBounds(
       [
         [minLon, minLat],
         [maxLon, maxLat],
       ],
-      // Cap the zoom on a commune so it keeps some surrounding context instead of filling
-      // the viewport; the wide right padding pushes it left of the detail panel.
-      { padding, duration: 800, maxZoom: isMobile || !isCommune ? undefined : 10.5 },
+      {
+        padding: scaledPadding,
+        duration: 800,
+        ...(!isMobile && isCommune ? { maxZoom: 10.5 } : {}),
+      },
     );
   }, [selectedEntity, level, mapReady]);
 

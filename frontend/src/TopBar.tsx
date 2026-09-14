@@ -343,7 +343,7 @@ export function TopBar({
       {/* Leaderboard + theme toggle stay grouped in their own row, right-aligned, even
           when everything above them has stacked into a column. */}
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: { xs: "flex-end", sm: "flex-start" } }}>
-        <Tooltip title="Comparer les communes">
+        <Tooltip title={`Liste des ${LEVEL_CONFIG[level].pluralLabel}`}>
           <IconButton size="small" onClick={handleOpenLeaderboard}>
             <TableRowsIcon fontSize="small" />
           </IconButton>

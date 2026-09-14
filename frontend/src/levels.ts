@@ -12,7 +12,7 @@ export type LevelConfig = {
   idProperty: string;
   nameProperty: string;
   label: string;
-  /** Plural, lower-case, for headings like "Comparer les communes" / "Comparer les régions". */
+  /** Plural, lower-case, for headings like "Liste des communes" / "Liste des régions". */
   pluralLabel: string;
   /** For the search placeholder, e.g. "une commune", "un EPCI": gender/article vary by level. */
   searchLabel: string;

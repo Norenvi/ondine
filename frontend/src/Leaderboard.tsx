@@ -362,7 +362,7 @@ export function Leaderboard({
           >
             <Box>
               <Typography variant="h6">
-                Comparer les {LEVEL_CONFIG[level].pluralLabel}
+                Liste des {LEVEL_CONFIG[level].pluralLabel}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {parameter.label} {annee}, triées par{" "}
