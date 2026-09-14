@@ -22,6 +22,7 @@ import { formatDate } from "./format";
 import { EmptyState, PanelSkeleton } from "./PanelStates";
 import {
   classifyValue,
+  complianceCaption,
   contrastText,
   defaultUnit,
   PARAMETER_BY_API_CODE,
@@ -253,7 +254,7 @@ function BulletinRow({ id, data, commune, annee, variant, expanded, onToggle }: 
 
   let alert: string | null = null;
   if (compliance && (data.nb_non_conformes ?? 0) > 0) {
-    alert = `${data.nb_non_conformes} / ${data.nb_mesures} prélèvement(s) non conforme(s)`;
+    alert = complianceCaption(data.nb_non_conformes ?? 0, data.nb_mesures);
   } else if (outOfLimit && limit) {
     alert = `Un relevé hors ${limit.binding ? "limite" : "référence"} (${limit.label})`;
   }

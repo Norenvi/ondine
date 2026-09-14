@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import CloseIcon from "@mui/icons-material/Close";
 import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
@@ -14,7 +15,13 @@ import { fetchZoneCommunes, type AggregationOut, type NiveauZoom } from "./api";
 import { loadEntityIndex, type EntitySummary } from "./entities";
 import { formatDate } from "./format";
 import { LEVEL_CONFIG } from "./levels";
-import { classifyValue, contrastText, PARAMETERS, type ParameterId } from "./parameters";
+import {
+  classifyValue,
+  contrastText,
+  LOW_SAMPLE_THRESHOLD,
+  PARAMETERS,
+  type ParameterId,
+} from "./parameters";
 import { convertFromBase, formatValue, type Unit } from "./units";
 
 type ZonePanelProps = {
@@ -122,6 +129,23 @@ export function ZonePanel({ entity, parameterId, unit, annee, onSelectCommune, o
         width: 90,
         align: "right",
         headerAlign: "right",
+        renderCell: (params) => {
+          const lowSample = compliance && params.row.nb_mesures < LOW_SAMPLE_THRESHOLD;
+          const cell = (
+            <Typography
+              variant="body2"
+              color={lowSample ? "warning.main" : "inherit"}
+              sx={{ width: "100%", textAlign: "right" }}
+            >
+              {params.row.nb_mesures}
+            </Typography>
+          );
+          return lowSample ? (
+            <Tooltip title="Echantillon réduit : taux à interpréter avec prudence">{cell}</Tooltip>
+          ) : (
+            cell
+          );
+        },
       },
       {
         field: "derniere_mesure",

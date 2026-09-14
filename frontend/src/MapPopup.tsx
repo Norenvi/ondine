@@ -9,7 +9,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import type { NiveauZoom } from "./api";
 import { communeLabel } from "./communes";
 import { formatDate } from "./format";
-import { classifyValue, contrastText, type ValueClass } from "./parameters";
+import { classifyValue, complianceCaption, contrastText, type ValueClass } from "./parameters";
 import { formatValueWithUnit, type Unit } from "./units";
 
 /** Only commune and departement codes mean anything to a reader alongside the name: a
@@ -70,8 +70,8 @@ export function MapPopup({ details, classes, unit, level, compliance = false, on
         </Typography>
       ) : (
         <Box>
-          {/* Wrap the chip to its own line when a long class name ("Contamination très
-              fréquente") leaves no room beside the value, rather than squeezing the value
+          {/* Wrap the chip to its own line when a long class name ("Taux de non-conformité
+              très élevé") leaves no room beside the value, rather than squeezing the value
               (which would break "30 %" across lines) or stretching the chip. */}
           <Stack
             direction="row"
@@ -100,7 +100,7 @@ export function MapPopup({ details, classes, unit, level, compliance = false, on
           </Stack>
           <Typography variant="caption" color="text.secondary">
             {compliance
-              ? `${nonCompliantCount ?? 0} / ${sampleCount ?? "?"} prélèvement(s) non conforme(s)`
+              ? complianceCaption(nonCompliantCount ?? 0, sampleCount ?? 0)
               : `${sampleCount ?? "?"} mesure(s)`}
             {latestSample ? `, dernière le ${formatDate(latestSample)}` : ""}
           </Typography>

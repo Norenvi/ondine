@@ -260,17 +260,19 @@ const CHLORE_LIBRE_UNITS: Record<string, Unit> = {
  * .nb_non_conformes column): the choropleth value is the percentage of the period's samples
  * that detected E. coli, 0 to 100. The exactly-zero class is split from any-detection with a
  * sentinel bound (min: 1e-9), since one detection in a hundred samples is still not
- * "compliant". Bands above it separate an isolated incident from recurring contamination.
- * The band thresholds (5 / 15 / 30 %) and their labels are the project's own interpretation,
- * not an official scale: French regulation only defines the binary per-sample limit (0/100mL),
- * there is no regulatory classification of a per-commune non-conformity rate.
+ * "compliant". The band thresholds (5 / 15 / 30 %) are the project's own interpretation, not
+ * an official scale: French regulation only defines the binary per-sample limit (0/100mL),
+ * there is no regulatory classification of a per-commune non-conformity rate. Labels describe
+ * the measured rate itself ("taux de non-conformité") rather than asserting a real-world
+ * contamination pattern ("fréquente", "récurrente") that a low sample count wouldn't support:
+ * see complianceCaption and LOW_SAMPLE_THRESHOLD, shown alongside every one of these labels.
  */
 const ECOLI_CLASSES: ValueClass[] = [
   { min: 0, label: "Aucune détection", color: "#1a9850", rangeLabel: "0 %" },
   { min: 1e-9, label: "Détection isolée", color: "#fee08b", rangeLabel: "0 - 5 %" },
-  { min: 5, label: "Détections récurrentes", color: "#fc8d59", rangeLabel: "5 - 15 %" },
-  { min: 15, label: "Contamination fréquente", color: "#d73027", rangeLabel: "15 - 30 %" },
-  { min: 30, label: "Contamination très fréquente", color: "#7f0000", rangeLabel: "> 30 %" },
+  { min: 5, label: "Taux de non-conformité modéré", color: "#fc8d59", rangeLabel: "5 - 15 %" },
+  { min: 15, label: "Taux de non-conformité élevé", color: "#d73027", rangeLabel: "15 - 30 %" },
+  { min: 30, label: "Taux de non-conformité très élevé", color: "#7f0000", rangeLabel: "> 30 %" },
 ];
 
 /**
@@ -637,8 +639,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ph: "pH = -log₁₀[H⁺], sans unité, échelle de 0 (acide) à 14 (basique), 7 = neutre",
       },
-      sourceLabel: "Wikipédia : Potentiel hydrogène",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Potentiel_hydrog%C3%A8ne",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   nitrates: {
@@ -654,8 +656,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : milligrammes de nitrates (NO₃⁻) par litre d'eau",
       },
-      sourceLabel: "Wikipédia : Nitrate",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Nitrate",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   nitrites: {
@@ -671,8 +673,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : milligrammes de nitrites (NO₂⁻) par litre, limite de qualité (contraignante) 0,5 mg/L, signale une contamination ou un défaut de traitement récents",
       },
-      sourceLabel: "Wikipédia : Nitrite",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Nitrite",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   ammonium: {
@@ -688,8 +690,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : milligrammes d'ammonium (NH₄⁺) par litre, référence de qualité (non contraignante) 0,1 mg/L, indicateur de pollution de la ressource ou de nitrification incomplète",
       },
-      sourceLabel: "Wikipédia : Ion ammonium",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Ion_ammonium",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   conductivite: {
@@ -706,8 +708,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
         uScm:
           "µS/cm : microsiemens par centimètre, capacité de l'eau à conduire le courant électrique, liée à sa minéralisation",
       },
-      sourceLabel: "Wikipédia : Conductivité électrique",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Conductivit%C3%A9_%C3%A9lectrique",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   turbidite: {
@@ -723,8 +725,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         nfu: "NFU (unité néphélométrique de formazine) : trouble de l'eau, mesuré par diffusion de la lumière",
       },
-      sourceLabel: "Wikipédia : Turbidité",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Turbidit%C3%A9",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   chlore_libre: {
@@ -759,10 +761,10 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
         n100ml:
           "n/100 mL : nombre de bactéries E. coli détectées dans un prélèvement, limite de qualité (contraignante) 0/100 mL, indicateur de contamination fécale",
         pct:
-          "% : part des prélèvements de la période où E. coli a été détecté (toute détection est une non-conformité), plutôt qu'une moyenne des comptages qu'un seul prélèvement élevé fausserait",
+          "% : part des prélèvements de la période où E. coli a été détecté (toute détection est une non-conformité)",
       },
-      sourceLabel: "Wikipédia : Escherichia coli",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Escherichia_coli",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   chlorures: {
@@ -778,8 +780,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : référence de qualité (non contraignante) 250 mg/L, goût perceptible au-delà",
       },
-      sourceLabel: "Wikipédia : Chlorure",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Chlorure",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   sulfates: {
@@ -795,8 +797,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : référence de qualité (non contraignante) 250 mg/L, effet laxatif possible au-delà",
       },
-      sourceLabel: "Wikipédia : Sulfate",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Sulfate",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   calcium: {
@@ -846,8 +848,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : référence de qualité (non contraignante) 200 µg/L, goût et coloration au-delà",
       },
-      sourceLabel: "Wikipédia : Fer",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Fer",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   aluminium: {
@@ -863,8 +865,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : référence de qualité (non contraignante) 200 µg/L, résidu du traitement de floculation",
       },
-      sourceLabel: "Wikipédia : Aluminium",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Aluminium",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   manganese: {
@@ -880,8 +882,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : limite de qualité (contraignante) 50 µg/L",
       },
-      sourceLabel: "Wikipédia : Manganèse",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Mangan%C3%A8se",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   sodium: {
@@ -897,8 +899,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : référence de qualité (non contraignante) 200 mg/L",
       },
-      sourceLabel: "Wikipédia : Sodium",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Sodium",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   potassium: {
@@ -931,8 +933,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : limite de qualité (contraignante) 1,5 mg/L",
       },
-      sourceLabel: "Wikipédia : Fluorure",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Fluorure",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   bore: {
@@ -948,8 +950,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         mgL: "mg/L : limite de qualité (contraignante) 1 mg/L",
       },
-      sourceLabel: "Wikipédia : Bore (chimie)",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Bore_(chimie)",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   plomb: {
@@ -965,8 +967,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : limite de qualité (contraignante) 10 µg/L, provient surtout de canalisations/branchements en plomb encore en place",
       },
-      sourceLabel: "Wikipédia : Plomb",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Plomb",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   cuivre: {
@@ -983,8 +985,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
         mgCuL:
           "mg(Cu)/L : limite de qualité (contraignante) 2 mg/L, référence de qualité (non contraignante) 1 mg/L, provient surtout de canalisations en cuivre",
       },
-      sourceLabel: "Wikipédia : Cuivre",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Cuivre",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   arsenic: {
@@ -1000,8 +1002,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : limite de qualité (contraignante) 10 µg/L, le plus souvent d'origine géologique (sous-sol) plutôt que liée à la distribution",
       },
-      sourceLabel: "Wikipédia : Arsenic",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Arsenic",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   selenium: {
@@ -1017,8 +1019,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : limite de qualité (contraignante) 20 µg/L, le plus souvent d'origine géologique (aquifères sédimentaires)",
       },
-      sourceLabel: "Wikipédia : Sélénium",
-      sourceUrl: "https://fr.wikipedia.org/wiki/S%C3%A9l%C3%A9nium",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   nickel: {
@@ -1034,8 +1036,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : limite de qualité (contraignante) 20 µg/L, provient surtout de la corrosion de robinetterie et raccords (chromage, inox)",
       },
-      sourceLabel: "Wikipédia : Nickel",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Nickel",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   bisphenol_a: {
@@ -1051,8 +1053,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : limite de qualité (contraignante) 2,5 µg/L, perturbateur endocrinien d'origine plastique/industrielle",
       },
-      sourceLabel: "Wikipédia : Bisphénol A",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Bisph%C3%A9nol_A",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   thm: {
@@ -1068,8 +1070,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : somme de 4 substances (chloroforme, bromoforme, dichloromonobromométhane, chlorodibromométhane), limite de qualité (contraignante) 100 µg/L, sous-produit de la désinfection au chlore",
       },
-      sourceLabel: "Wikipédia : Trihalométhane",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Trihalom%C3%A9thane",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   pesticides: {
@@ -1085,8 +1087,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : somme de tous les pesticides quantifiés dans le prélèvement, limite de qualité (contraignante) 0,5 µg/L au total quelles que soient les molécules",
       },
-      sourceLabel: "Wikipédia : Pesticide",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Pesticide",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
   pfas: {
@@ -1102,8 +1104,8 @@ export const PARAMETERS: Record<ParameterId, ParameterDef> = {
       lines: {
         ugL: "µg/L : somme de 20 composés perfluoroalkylés, limite de qualité (contraignante) 0,10 µg/L, surveillance obligatoire depuis janvier 2026 (peu de données avant 2023)",
       },
-      sourceLabel: "Wikipédia : Composé perfluoré",
-      sourceUrl: "https://fr.wikipedia.org/wiki/Compos%C3%A9_perfluor%C3%A9_et_polyfluor%C3%A9",
+      sourceLabel: "Légifrance : limites et références de qualité (arrêté du 11 janvier 2007 modifié)",
+      sourceUrl: "https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000046890189",
     },
   },
 };
@@ -1217,6 +1219,24 @@ export function defaultUnit(id: ParameterId): Unit {
 export function classifyValue(value: number, classes: ValueClass[]): ValueClass {
   // Walked from the top so the first match is the highest bound the value clears.
   return [...classes].reverse().find((entry) => value >= entry.min) ?? classes[0];
+}
+
+/**
+ * Below this many samples, a single detection swings a compliance rate (E. coli today, any
+ * future threshold-based parameter) by more than 10 points: a label like "contamination
+ * frequente" reads as a confident trend that a handful of samples can't actually support.
+ * Not a regulatory figure, the project's own caution threshold for the UI.
+ */
+export const LOW_SAMPLE_THRESHOLD = 10;
+
+/** Shared "N / M prélèvements non conformes" caption for a compliance parameter, with a
+ * caution note appended below LOW_SAMPLE_THRESHOLD so the rate isn't read as more confident
+ * than the sample size supports. Used by the map popup, commune summary and bulletin. */
+export function complianceCaption(nonCompliant: number, sampleCount: number): string {
+  const base = `${nonCompliant} / ${sampleCount} prélèvement(s) non conforme(s)`;
+  return sampleCount < LOW_SAMPLE_THRESHOLD
+    ? `${base} (échantillon réduit, taux à interpréter avec prudence)`
+    : base;
 }
 
 function relativeLuminance(hex: string): number {

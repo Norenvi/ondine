@@ -23,6 +23,7 @@ import { formatDate } from "./format";
 import { EmptyState, PanelSkeleton } from "./PanelStates";
 import {
   classifyValue,
+  complianceCaption,
   contrastText,
   PARAMETERS,
   REGULATORY_LIMITS,
@@ -292,7 +293,7 @@ export function CommuneMesures({
           >
             <Typography variant="caption" color="text.secondary">
               {summary.nonCompliant !== null
-                ? `${summary.nonCompliant} / ${summary.count} prélèvements non conformes, dernière le ${formatDate(summary.latest)}`
+                ? `${complianceCaption(summary.nonCompliant, summary.count)}, dernière le ${formatDate(summary.latest)}`
                 : `${summary.count} mesure(s), dernière le ${formatDate(summary.latest)}`}
             </Typography>
             {limitLine !== null && (
@@ -451,7 +452,7 @@ export function CommuneMesures({
           underline="hover"
           title="Relevés bruts Hub'Eau (JSON) : ce paramètre, cette année, sur les réseaux qui desservent la commune."
         >
-          Source : Hub'Eau
+          Voir les données brutes sur Hub'Eau
         </Link>
       </Stack>
     </>
