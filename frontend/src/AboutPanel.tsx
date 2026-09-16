@@ -419,8 +419,8 @@ const SECTIONS: Section[] = [
     body: (
       <Typography variant="body2">
         Pour signaler une erreur ou proposer une suggestion, vous pouvez envoyer un mail à{" "}
-        <Link href="mailto:test@gmail.com">
-          test@gmail.com
+        <Link href="mailto:ondine-contact@proton.me">
+          ondine-contact@proton.me
         </Link>
       </Typography>
     ),
