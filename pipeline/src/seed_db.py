@@ -30,8 +30,24 @@ sys.path.insert(0, str(BACKEND_SRC))
 from models import Base, Commune, Departement, Epci, Mesure, Parametre, Region, Reseau
 
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://ondine:ondine@localhost:5432/ondine"
+
+
+def load_dotenv(path: Path) -> None:
+    """Populate os.environ from a plain KEY=VALUE file, without overriding variables already
+    set. Avoids a python-dotenv dependency for the one variable (DATABASE_URL) this pipeline
+    reads from the repo-root .env that docker compose also uses.
+    """
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip())
 
 # Registry of monitored parameters. Adding one here is the entire cost of tracking a new
 # metric end to end: "unite" doubles as the expected SANDRE unit, asserted while filtering
@@ -405,6 +421,7 @@ def main() -> None:
         if missing:
             raise ValueError(f"Unknown parameter code(s): {sorted(missing)}")
 
+    load_dotenv(REPO_ROOT / ".env")
     database_url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     engine = create_engine(database_url)
     Base.metadata.create_all(engine, checkfirst=True)

@@ -178,6 +178,10 @@ const SECTIONS: Section[] = [
           </Link>{" "}
           distribué par Etalab (OpenMapTiles).
         </Typography>
+        <Typography variant="body2" sx={{ mb: 2 }} color="text.secondary">
+          Données à jour jusqu'en 2026 (année en cours, partielle). Les nouvelles années sont
+          intégrées au fil de la publication des archives Hub'Eau, sans fréquence fixe.
+        </Typography>
         <Typography variant="body2" color="text.secondary">
           Ondine est un projet indépendant, non affilié à Hub'Eau, au Ministère des
           Solidarités et de la Santé, à l'IGN ni à l'INSEE. Comme les données sources
@@ -417,12 +421,14 @@ const SECTIONS: Section[] = [
     navLabel: "Contact",
     title: "Contact",
     body: (
-      <Typography variant="body2">
-        Pour signaler une erreur ou proposer une suggestion, vous pouvez envoyer un mail à{" "}
-        <Link href="mailto:ondine-contact@proton.me">
-          ondine-contact@proton.me
-        </Link>
-      </Typography>
+      <>
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          Pour signaler une erreur ou proposer une suggestion, vous pouvez envoyer un mail à{" "}
+          <Link href="mailto:ondine-contact@proton.me">
+            ondine-contact@proton.me
+          </Link>
+        </Typography>
+      </>
     ),
   },
 ];

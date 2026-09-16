@@ -28,6 +28,11 @@ frontend/public/data/*
 frontend/node_modules/
 frontend/dist/
 
+# Secrets
+.env
+backend/.env
+pipeline/.env
+
 # Divers
 .DS_Store
 *.log

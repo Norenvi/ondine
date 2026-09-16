@@ -3,7 +3,7 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: ondine
-      POSTGRES_PASSWORD: ondine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, see .env.example}
       POSTGRES_DB: ondine
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -20,7 +20,7 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://ondine:ondine@db:5432/ondine
+      DATABASE_URL: postgresql+psycopg://ondine:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, see .env.example}@db:5432/ondine
     ports:
       # Exposed on the host so `npm run dev` (Vite's own server, outside docker) can
       # reach it directly, mirroring what Caddy proxies to in the full compose stack.
@@ -52,7 +52,7 @@ services:
       context: .
       dockerfile: pipeline/Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://ondine:ondine@db:5432/ondine
+      DATABASE_URL: postgresql+psycopg://ondine:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, see .env.example}@db:5432/ondine
     volumes:
       - ./pipeline:/repo/pipeline
     depends_on:
