@@ -30,9 +30,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    environment:
+      DATABASE_URL: postgresql://ondine:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, see .env.example}@db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:?set UMAMI_APP_SECRET in .env, see .env.example}
+    ports:
+      # Not in the OCI security list (like db/backend below), so unreachable from the
+      # public internet even on the VM. Admin dashboard : SSH tunnel like Postgres
+      # (see "Seeder la base Postgres de la VM" in CLAUDE.md), just port 3001 instead of 5432.
+      # Host port 3001, not 3000 : WSL2's localhost-forwarding relay got stuck for 3000
+      # specifically on this machine (confirmed working container, refused from Windows).
+      - "3001:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   caddy:
     build:
       context: ./frontend
+      args:
+        VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
     ports:
       - "80:80"
       - "443:443"
@@ -41,6 +60,7 @@ services:
       - caddy-data:/data
     depends_on:
       - backend
+      - umami
     restart: unless-stopped
 
   # Pipeline : pas un service permanent, lancer a la demande, ex:

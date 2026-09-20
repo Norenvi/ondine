@@ -5,6 +5,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ondine</title>
+    <!-- Umami analytics. data-website-id comes from VITE_UMAMI_WEBSITE_ID (build-time env var,
+         see .env.example), set per environment after creating the site in the Umami dashboard. -->
+    <script defer src="/stats/script.js" data-website-id="%VITE_UMAMI_WEBSITE_ID%"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,8 @@
+# Override for local dev : swaps the Caddyfile for the no-TLS variant (see Caddyfile.local).
+# Not auto-loaded : pass explicitly with -f so the VM deployment (docker-compose.yml alone)
+# keeps using the real, domain-bound Caddyfile.
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data

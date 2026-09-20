@@ -1,0 +1,30 @@
+# Local dev variant of Caddyfile : same routes, but bound to :80 (no hostname) so Caddy never
+# attempts automatic HTTPS / real ACME issuance for ondine-eau.fr. DNS for that domain points
+# at the VM (via Cloudflare), so a local instance can never complete a challenge for it anyway :
+# using the production Caddyfile locally just retries forever and burns Let's Encrypt rate limits.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d db backend caddy umami
+{
+	auto_https off
+}
+
+:80 {
+	root * /srv
+	encode zstd gzip
+
+	@geo path *.geojson *.mbtiles *.pbf
+	header @geo Cache-Control "public, max-age=3600"
+
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle_path /stats/* {
+		reverse_proxy umami:3000
+	}
+
+	handle {
+		file_server
+		try_files {path} /index.html
+	}
+}
