@@ -433,8 +433,6 @@ const SECTIONS: Section[] = [
   },
 ];
 
-/** Full-screen "about" overlay, matching Leaderboard's shell (Paper inset:0 over the map).
- * Static content, so unlike the leaderboard/map selection it isn't mirrored into the URL. */
 export function AboutPanel({ onClose }: AboutPanelProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const sectionElsRef = useRef<Map<string, HTMLElement>>(new Map());

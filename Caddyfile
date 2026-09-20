@@ -11,8 +11,7 @@ ondine-eau.fr {
 		reverse_proxy backend:8000
 	}
 
-	# Umami : script de tracking + endpoint de collecte uniquement (le dashboard admin
-	# n'est pas expose publiquement, voir docker-compose.yml / CLAUDE.md pour l'acces via tunnel SSH)
+	# Umami : script de tracking + endpoint de collecte (meme origine que le site).
 	handle_path /stats/* {
 		reverse_proxy umami:3000
 	}
@@ -21,4 +20,11 @@ ondine-eau.fr {
 		file_server
 		try_files {path} /index.html
 	}
+}
+
+# Dashboard admin Umami : sous-domaine dedie plutot qu'un sous-chemin, l'image Umami
+# officielle n'est pas subpath-aware (basePath Next.js fige au build). Protege par le
+# login Umami lui-meme, aucune restriction supplementaire cote Caddy.
+analytics.ondine-eau.fr {
+	reverse_proxy umami:3000
 }
