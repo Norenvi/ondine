@@ -196,48 +196,66 @@ export function MapView({ parameterId, unit, level, annee, selectedEntity, onSel
       promoteId: { [config.sourceLayer]: config.idProperty },
     });
 
-    instance.addLayer({
-      id: FILL_LAYER_ID,
-      type: "fill",
-      source: SOURCE_ID,
-      "source-layer": config.sourceLayer,
-      paint: {
-        "fill-color": buildFillColorExpression(PARAMETERS[id].classes) as ExpressionSpecification,
-        "fill-opacity": 0.75,
-      },
-    });
+    // Insert below the basemap's own text (road/POI/place names): addLayer with no beforeId
+    // appends on top of the whole style, which buried every label (notably city/town names)
+    // under the translucent fill. Looked up live rather than hardcoded, since this is an
+    // externally hosted style (Etalab) whose layer ids aren't ours to pin to.
+    const firstSymbolLayerId = instance.getStyle().layers?.find((layer) => layer.type === "symbol")?.id;
 
-    instance.addLayer({
-      id: OUTLINE_LAYER_ID,
-      type: "line",
-      source: SOURCE_ID,
-      "source-layer": config.sourceLayer,
-      paint: { "line-color": "#ffffff", "line-width": 0.3, "line-opacity": 0.6 },
-    });
+    instance.addLayer(
+      {
+        id: FILL_LAYER_ID,
+        type: "fill",
+        source: SOURCE_ID,
+        "source-layer": config.sourceLayer,
+        paint: {
+          "fill-color": buildFillColorExpression(PARAMETERS[id].classes) as ExpressionSpecification,
+          "fill-opacity": 0.75,
+        },
+      },
+      firstSymbolLayerId,
+    );
+
+    instance.addLayer(
+      {
+        id: OUTLINE_LAYER_ID,
+        type: "line",
+        source: SOURCE_ID,
+        "source-layer": config.sourceLayer,
+        paint: { "line-color": "#ffffff", "line-width": 0.3, "line-opacity": 0.6 },
+      },
+      firstSymbolLayerId,
+    );
 
     // Drawn above the plain outline: width collapses to 0 unless the feature is hovered.
-    instance.addLayer({
-      id: HOVER_LAYER_ID,
-      type: "line",
-      source: SOURCE_ID,
-      "source-layer": config.sourceLayer,
-      paint: {
-        "line-color": "#0b1b33",
-        "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
+    instance.addLayer(
+      {
+        id: HOVER_LAYER_ID,
+        type: "line",
+        source: SOURCE_ID,
+        "source-layer": config.sourceLayer,
+        paint: {
+          "line-color": "#0b1b33",
+          "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
+        },
       },
-    });
+      firstSymbolLayerId,
+    );
 
     // Drawn above hover: the commune selected via search, outlined in solid black.
-    instance.addLayer({
-      id: SELECTED_LAYER_ID,
-      type: "line",
-      source: SOURCE_ID,
-      "source-layer": config.sourceLayer,
-      paint: {
-        "line-color": "#000000",
-        "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
+    instance.addLayer(
+      {
+        id: SELECTED_LAYER_ID,
+        type: "line",
+        source: SOURCE_ID,
+        "source-layer": config.sourceLayer,
+        paint: {
+          "line-color": "#000000",
+          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 0],
+        },
       },
-    });
+      firstSymbolLayerId,
+    );
   }
 
   useEffect(() => {

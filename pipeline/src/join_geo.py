@@ -16,12 +16,19 @@ TARGET_CRS = "EPSG:4326"
 
 
 def find_admin_express_archive(raw_dir: Path = RAW_DIR) -> Path:
-    """Find the most recent Admin Express COG 7z archive in raw_dir."""
-    matches = sorted(raw_dir.glob("ADMIN-EXPRESS-COG*.7z"))
+    """Find the most recent Admin Express COG "FRA" (France entiere) 7z archive in raw_dir.
+
+    The FRA zone bundles metropolitan France and the five DROM (Guadeloupe, Martinique,
+    Guyane, Reunion, Mayotte) in a single GeoPackage, already in EPSG:4326, instead of the
+    FXX-only (metropole only) archive used before. Older FXX-only archives are ignored even
+    if still present in raw_dir.
+    """
+    matches = sorted(raw_dir.glob("ADMIN-EXPRESS-COG*_FRA_*.7z"))
     if not matches:
         raise FileNotFoundError(
-            f"No ADMIN-EXPRESS-COG*.7z archive in {raw_dir}. "
-            "Download the COG GeoPackage from geoservices.ign.fr/adminexpress."
+            f"No ADMIN-EXPRESS-COG*_FRA_*.7z archive in {raw_dir}. Download the France "
+            "entiere GPKG from data.geopf.fr/telechargement/resource/ADMIN-EXPRESS-COG "
+            "(zone FRA, format GPKG)."
         )
     return matches[-1]
 

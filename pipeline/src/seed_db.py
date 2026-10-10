@@ -151,6 +151,12 @@ def load_admin_hierarchy(
         }
     ).drop(columns="codes_siren_des_epci")
 
+    # The FRA zone archive also carries Saint-Pierre-et-Miquelon (a COM, not a DROM): it has
+    # no departement/region in this hierarchy, so its communes carry code_departement="NR".
+    # Out of scope (see CLAUDE.md perimeter: metropole + the 5 DROM only), and code_departement
+    # is a non-nullable FK on Commune, so drop rather than insert a dangling reference.
+    commune = commune[commune["code_departement"].isin(departement["code"])]
+
     return region, departement, epci, commune
 
 
@@ -540,10 +546,9 @@ def main() -> None:
                 mesures["valeur_libelle"] = derive_valeur_libelle(mesures["rqana"])
                 mesures["annee"] = year
 
-                # DOM/TOM communes (97x) have no FXX contour and therefore no commune row (see
-                # CLAUDE.md: current scope is metropolitan France only), and a handful of codes
-                # remain genuinely unmatched (mergers the movements tables can't resolve). The
-                # FK would reject them anyway: drop and report rather than fail loudly.
+                # A handful of codes remain genuinely unmatched (mergers the movements tables
+                # can't resolve, or a code outside the Admin Express COG FRA zone). The FK
+                # would reject them anyway: drop and report rather than fail loudly.
                 unmatched = mesures.loc[~mesures["code_insee"].isin(known_codes), "code_insee"].nunique()
                 if unmatched:
                     print(

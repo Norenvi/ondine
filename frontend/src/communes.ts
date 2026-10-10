@@ -9,8 +9,7 @@ export type CommuneSummary = Omit<EntitySummary, "level">;
 
 /**
  * Derives the department number from an INSEE commune code: the first 2 digits,
- * except Corse (2A/2B, already letters in the code) and DOM codes (971-976,
- * out of scope for now since the dataset covers FXX only).
+ * except Corse (2A/2B, already letters in the code) and DOM codes (971-976, 3 digits).
  */
 export function departmentFromInseeCode(code: string): string {
   return code.startsWith("97") ? code.slice(0, 3) : code.slice(0, 2);

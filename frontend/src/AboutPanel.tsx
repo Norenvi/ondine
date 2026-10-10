@@ -304,8 +304,11 @@ const SECTIONS: Section[] = [
           notamment pour les paramètres sensibles aux saisons (nitrates, dureté).
         </Typography>
         <Typography variant="body2" sx={{ mb: 2 }}>
-          Le périmètre couvert est la France métropolitaine uniquement, les départements et
-          régions d'outre-mer ne sont pas encore intégrés.
+          Le périmètre couvert est la France métropolitaine et les cinq départements et
+          régions d'outre-mer (Guadeloupe, Martinique, Guyane, La Réunion, Mayotte). Les
+          autres collectivités d'outre-mer (Saint-Pierre-et-Miquelon, Saint-Martin,
+          Saint-Barthélemy, Polynésie française, Nouvelle-Calédonie, Wallis-et-Futuna, Terres
+          australes et antarctiques françaises) ne sont pas couvertes par ce jeu de données.
         </Typography>
         <Typography variant="body2" sx={{ mb: 2 }}>
           Tous les paramètres ne sont pas prélevés chaque année pour chaque commune. La
@@ -413,6 +416,30 @@ const SECTIONS: Section[] = [
             </TableBody>
           </Table>
         </TableContainer>
+      </>
+    ),
+  },
+  {
+    id: "journal",
+    navLabel: "Journal des modifications",
+    title: "Journal des modifications",
+    body: (
+      <>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Version 1.1.0 (10/10/2026)
+        </Typography>
+        <Typography variant="body2" component="ul" sx={{ pl: 2.5, mb: 0 }}>
+          <li>
+            Intégration des départements et régions d'outre-mer (Guadeloupe, Martinique,
+            Guyane, La Réunion, Mayotte) dans les contours, les mesures Hub'Eau et la
+            recherche.
+          </li>
+          <li>
+            Correction de l'affichage de la carte. Les noms de lieux (communes, régions)
+            étaient masqués sous la couleur du choropleth, ils s'affichent maintenant
+            au-dessus.
+          </li>
+        </Typography>
       </>
     ),
   },
@@ -549,41 +576,47 @@ export function AboutPanel({ onClose }: AboutPanelProps) {
             </List>
           </Box>
 
-          <Box ref={contentRef} sx={{ overflowY: "auto", flexGrow: 1, minHeight: 0 }}>
-            <Box sx={{ maxWidth: 900, mx: "auto", px: { xs: 0, sm: 3 } }}>
-              <Typography
-                variant="h5"
-                component="div"
+          <Box ref={contentRef} sx={{ overflowY: "auto", flexGrow: 1, minHeight: 0, px: { xs: 0, sm: 3 } }}>
+            <Typography
+              variant="h5"
+              component="div"
+              sx={{
+                fontSize: "1.625rem",
+                fontWeight: 200,
+                letterSpacing: "0.12em",
+                mb: 2,
+                textAlign: "center",
+              }}
+            >
+              Ondine
+            </Typography>
+            {SECTIONS.map((section, index) => (
+              <Box
+                key={section.id}
+                id={section.id}
+                ref={(el: HTMLElement | null) => {
+                  if (el) sectionElsRef.current.set(section.id, el);
+                  else sectionElsRef.current.delete(section.id);
+                }}
                 sx={{
-                  fontSize: "1.625rem",
-                  fontWeight: 200,
-                  letterSpacing: "0.12em",
-                  mb: 2,
-                  textAlign: "center",
+                  mb: index < SECTIONS.length - 1 ? 3 : 0,
+                  scrollMarginTop: 1,
+                  textAlign: "justify",
+                  // The Sandre table needs the full available width to stay readable with
+                  // five columns; every other section reads better kept to a narrow measure.
+                  maxWidth: section.id === "sandre" ? "none" : 680,
+                  mx: section.id === "sandre" ? 0 : "auto",
                 }}
               >
-                Ondine
-              </Typography>
-              {SECTIONS.map((section, index) => (
-                <Box
-                  key={section.id}
-                  id={section.id}
-                  ref={(el: HTMLElement | null) => {
-                    if (el) sectionElsRef.current.set(section.id, el);
-                    else sectionElsRef.current.delete(section.id);
-                  }}
-                  sx={{ mb: index < SECTIONS.length - 1 ? 3 : 0, scrollMarginTop: 1 }}
-                >
-                  {section.title && (
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {section.title}
-                    </Typography>
-                  )}
-                  {section.body}
-                  {index < SECTIONS.length - 1 && <Divider sx={{ mt: 3 }} />}
-                </Box>
-              ))}
-            </Box>
+                {section.title && (
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {section.title}
+                  </Typography>
+                )}
+                {section.body}
+                {index < SECTIONS.length - 1 && <Divider sx={{ mt: 3 }} />}
+              </Box>
+            ))}
           </Box>
         </Box>
       </Box>
