@@ -28,3 +28,11 @@ ondine-eau.fr {
 analytics.ondine-eau.fr {
 	reverse_proxy umami:3000
 }
+
+# Scarbo (separate repo, ~/scarbo on the VM): this Caddy is the VM's only entry point on
+# 80/443, so it terminates HTTPS for Scarbo too and forwards to the "scarbo" container, which
+# joins this project's Compose network (ondine_default) from its own docker-compose.yml.
+# Until that container runs, this host answers 502; Ondine's sites are unaffected.
+scarbo.ondine-eau.fr {
+	reverse_proxy scarbo:80
+}
